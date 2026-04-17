@@ -129,7 +129,7 @@ Sau khi chạy xong, kết quả nằm ở:
   dựng biểu đồ so sánh (matplotlib). Phân tích theo indoor/outdoor,
   trade-off chất lượng ↔ tốc độ.
 
-## 7. Hướng phát triển (đã nêu trong đề cương)
+## 7. Hướng phát triển
 
 - DCP với cửa sổ thích nghi (patch size thay đổi theo vùng).
 - Pipeline Hybrid với post-processing cân bằng trắng.
