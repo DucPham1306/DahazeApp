@@ -1,10 +1,3 @@
-"""
-src/gui/main_window.py
-----------------------
-Cửa sổ chính của ứng dụng. Chia 2 tab:
-  - "Xử lý ảnh đơn" (SingleImageTab)
-  - "Đánh giá Dataset" (BenchmarkTab - import từ benchmark_tab.py)
-"""
 from __future__ import annotations
 
 import sys

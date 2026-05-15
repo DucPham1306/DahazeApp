@@ -42,7 +42,7 @@ def compute_all_no_reference(img) -> dict:
         "Sharpness (LapVar)": compute_laplacian_var(img), #Độ sắc nét (biến thiên Laplacian)
         "Entropy (Shannon)": compute_entropy(img), #Độ phức tạp thông tin
         "Edge Visibility": compute_edge_visibility(img), #Độ rõ cạnh
-        "Haze Index": compute_fade_like(img), 
+        "Haze Index": compute_fade_like(img), #Chỉ số sương mù (dựa trên histogram)
     }
     niqe = compute_niqe(img)
     if niqe is not None:

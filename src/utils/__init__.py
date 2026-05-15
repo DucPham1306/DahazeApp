@@ -7,6 +7,12 @@ from .io import (
     to_uint8,
 )
 from .guided_filter import guided_filter
+from .datasets import (
+    Dataset,
+    detect_dataset,
+    load_custom_dataset,
+    pair_folders,
+)
 
 __all__ = [
     "load_image",
@@ -16,4 +22,8 @@ __all__ = [
     "to_float",
     "to_uint8",
     "guided_filter",
+    "Dataset",
+    "detect_dataset",
+    "load_custom_dataset",
+    "pair_folders",
 ]

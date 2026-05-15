@@ -1,9 +1,3 @@
-"""
-src/metrics/psnr_ssim.py
-------------------------
-Full-reference metrics: PSNR và SSIM.
-Dùng scikit-image.
-"""
 from __future__ import annotations
 
 import numpy as np

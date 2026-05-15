@@ -1,17 +1,3 @@
-"""
-src/benchmark.py
-----------------
-Chạy toàn bộ SOTS (indoor + outdoor) qua các thuật toán,
-đo PSNR/SSIM/NIQE/Entropy/Edge visibility và thời gian xử lý,
-xuất kết quả ra CSV + ảnh kết quả.
-
-Ví dụ:
-    python -m src.benchmark \
-        --sots-root data/SOTS \
-        --out-dir results \
-        --algorithms DCP CLAHE CAP Hybrid \
-        --save-images
-"""
 from __future__ import annotations
 
 import argparse

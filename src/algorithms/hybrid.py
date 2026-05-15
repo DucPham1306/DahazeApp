@@ -1,15 +1,3 @@
-"""
-src/algorithms/hybrid.py
-------------------------
-Pipeline lai CLAHE + DCP - hướng nâng cấp đề xuất trong đề cương.
-
-Ý tưởng:
-  1) Dùng CLAHE NHẸ để tăng tương phản cục bộ, giúp ước lượng
-     dark channel/transmission ổn định hơn trên vùng bầu trời
-     và vùng sương dày.
-  2) Chạy DCP trên ảnh đã tăng sáng.
-  3) (Tuỳ chọn) blend kết quả với ảnh gốc để tránh over-enhance.
-"""
 from __future__ import annotations
 
 import numpy as np
@@ -29,12 +17,7 @@ def dehaze_hybrid(
     guided_eps: float = 1e-3,
     blend: float = 0.0,
 ) -> np.ndarray:
-    """Pipeline CLAHE -> DCP.
 
-    Args:
-        blend: 0.0 => dùng hoàn toàn kết quả DCP;
-               0.3 => trộn 70% DCP + 30% ảnh gốc (tránh over-enhance).
-    """
     pre = dehaze_clahe(img, clip_limit=clip_limit, tile_grid_size=tile_grid_size)
     J = dehaze_dcp(
         pre,
