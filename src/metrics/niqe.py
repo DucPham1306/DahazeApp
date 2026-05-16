@@ -6,20 +6,19 @@ from typing import Optional
 import numpy as np
 
 _NIQE_METRIC = None
-_NIQE_READY: Optional[bool] = None  # None = chưa thử, True/False = đã thử
+_NIQE_READY: Optional[bool] = None
 
 
-def _init_niqe():
+def _init_niqe() -> None:
     global _NIQE_METRIC, _NIQE_READY
     if _NIQE_READY is not None:
         return
     try:
-        import pyiqa  # noqa
-        import torch  # noqa
-
+        import pyiqa
+        import torch
         _NIQE_METRIC = pyiqa.create_metric("niqe", as_loss=False)
         _NIQE_READY = True
-    except Exception as e:  # pragma: no cover
+    except Exception as e:
         warnings.warn(
             f"[metrics.niqe] pyiqa không khả dụng ({e}). "
             "NIQE sẽ trả về None. Cài: pip install pyiqa torch"
@@ -35,7 +34,7 @@ def compute_niqe(img: np.ndarray) -> Optional[float]:
     import torch
 
     if img.dtype == np.uint8:
-        img = img.astype(np.float32) / 255.0
+        img = img.astype(np.float32) * (1.0 / 255.0)
 
     t = torch.from_numpy(img.transpose(2, 0, 1)).unsqueeze(0).float()
     with torch.no_grad():

@@ -6,9 +6,8 @@ import numpy as np
 from ..utils.guided_filter import guided_filter
 
 
-# --------------------------- Các bước con --------------------------- #
 def dark_channel(img: np.ndarray, patch_size: int = 15) -> np.ndarray:
-    min_channel = np.min(img, axis=2)
+    min_channel = img.min(axis=2)
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (patch_size, patch_size))
     return cv2.erode(min_channel, kernel)
 
@@ -16,41 +15,28 @@ def dark_channel(img: np.ndarray, patch_size: int = 15) -> np.ndarray:
 def estimate_atmospheric_light(
     img: np.ndarray, dark: np.ndarray, top_percent: float = 0.001
 ) -> np.ndarray:
-    h, w = dark.shape
-    n_pixels = h * w
+    n_pixels = dark.size
     n_top = max(int(n_pixels * top_percent), 1)
-
-    dark_flat = dark.ravel()
-    img_flat = img.reshape(n_pixels, 3)
-
-    idx = np.argpartition(dark_flat, -n_top)[-n_top:]
-    brightest = img_flat[idx]
-
-    A = brightest[np.argmax(brightest.sum(axis=1))]
-    return A.astype(np.float32)  
+    flat_img = img.reshape(n_pixels, 3)
+    idx = np.argpartition(dark.ravel(), -n_top)[-n_top:]
+    candidates = flat_img[idx]
+    return candidates[candidates.sum(axis=1).argmax()].astype(np.float32)
 
 
 def estimate_transmission(
     img: np.ndarray, A: np.ndarray, omega: float = 0.95, patch_size: int = 15
 ) -> np.ndarray:
-  
-    normed = img / A.reshape(1, 1, 3)
-    normed = np.clip(normed, 0, 1)
-    t = 1.0 - omega * dark_channel(normed, patch_size)
-    return t
+    normed = np.clip(img / A, 0.0, 1.0)
+    return 1.0 - omega * dark_channel(normed, patch_size)
 
 
 def recover(
     img: np.ndarray, A: np.ndarray, t: np.ndarray, t0: float = 0.1
 ) -> np.ndarray:
-
-    t = np.clip(t, t0, 1.0)
-    t3 = np.repeat(t[..., np.newaxis], 3, axis=2)
-    J = (img - A) / t3 + A
-    return np.clip(J, 0, 1)
+    t_safe = np.maximum(t, t0)[..., None]
+    return np.clip((img - A) / t_safe + A, 0.0, 1.0)
 
 
-# --------------------------- API chính --------------------------- #
 def dehaze_dcp(
     img: np.ndarray,
     patch_size: int = 15,
@@ -60,10 +46,12 @@ def dehaze_dcp(
     guided_eps: float = 1e-3,
     return_intermediate: bool = False,
 ):
-
-    assert img.ndim == 3 and img.shape[2] == 3, "Cần ảnh RGB 3 kênh"
-    if img.dtype != np.float32 and img.dtype != np.float64:
+    if img.ndim != 3 or img.shape[2] != 3:
+        raise ValueError("Input phải là ảnh RGB 3 kênh")
+    if img.dtype == np.uint8:
         img = img.astype(np.float32) / 255.0
+    elif img.dtype != np.float32:
+        img = img.astype(np.float32)
 
     dark = dark_channel(img, patch_size)
     A = estimate_atmospheric_light(img, dark)

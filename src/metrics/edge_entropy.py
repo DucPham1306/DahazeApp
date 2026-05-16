@@ -14,17 +14,12 @@ def _to_gray_u8(img: np.ndarray) -> np.ndarray:
 
 
 def compute_entropy(img: np.ndarray) -> float:
-
-    gray = _to_gray_u8(img)
-    return float(shannon_entropy(gray))
+    return float(shannon_entropy(_to_gray_u8(img)))
 
 
-def compute_edge_visibility(
-    img: np.ndarray, threshold: int = 20
-) -> float:
-
+def compute_edge_visibility(img: np.ndarray, threshold: int = 20) -> float:
     gray = _to_gray_u8(img)
     gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
-    mag = np.sqrt(gx * gx + gy * gy)
+    mag = cv2.magnitude(gx, gy)
     return float((mag > threshold).mean())

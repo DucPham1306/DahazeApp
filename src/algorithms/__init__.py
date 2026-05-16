@@ -1,4 +1,3 @@
-"""Các thuật toán khử sương mù."""
 from .dcp import dehaze_dcp
 from .clahe import dehaze_clahe
 from .cap import dehaze_cap

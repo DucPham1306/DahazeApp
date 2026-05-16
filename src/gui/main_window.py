@@ -12,11 +12,17 @@ from ..algorithms import ALGORITHMS
 from ..metrics import compute_all_no_reference
 from ..utils import load_image, save_image, to_uint8
 from .benchmark_tab import BenchmarkTab
+from .style import (
+    APP_QSS,
+    IMAGE_VIEW_QSS,
+    INFO_CARD_QSS,
+    LEGEND_CARD_QSS,
+    PRIMARY,
+    SUCCESS,
+    DANGER,
+)
 
 
-# ========================================================================= #
-#                        Worker chạy thuật toán ở thread riêng
-# ========================================================================= #
 class DehazeWorker(QtCore.QThread):
     finished_signal = QtCore.pyqtSignal(np.ndarray, float)
     error_signal = QtCore.pyqtSignal(str)
@@ -34,33 +40,31 @@ class DehazeWorker(QtCore.QThread):
             out = fn(self.img, **self.params)
             dt = (time.perf_counter() - t0) * 1000
             self.finished_signal.emit(out, dt)
-        except Exception as e:  # pragma: no cover
+        except Exception as e:
             self.error_signal.emit(str(e))
 
 
-# ========================================================================= #
-#                        Widget hiển thị ảnh (scale auto)
-# ========================================================================= #
 class ImageView(QtWidgets.QLabel):
-    def __init__(self, title: str, parent=None):
+    def __init__(self, placeholder: str, parent=None):
         super().__init__(parent)
         self.setAlignment(QtCore.Qt.AlignCenter)
-        self.setMinimumSize(400, 280)
-        self.setStyleSheet(
-            "background:#222; color:#aaa; border:1px solid #444;"
-            "border-radius:6px; font-size:13px;"
-        )
-        self.setText(f"{title}\n(Chưa có ảnh)")
+        self.setMinimumSize(420, 320)
+        self.setStyleSheet(IMAGE_VIEW_QSS)
+        self.setText(placeholder)
         self._pixmap: Optional[QtGui.QPixmap] = None
 
     def set_image(self, img: np.ndarray) -> None:
-        img_u8 = to_uint8(img)
+        img_u8 = np.ascontiguousarray(to_uint8(img))
         h, w, _ = img_u8.shape
         qimg = QtGui.QImage(img_u8.data, w, h, 3 * w, QtGui.QImage.Format_RGB888)
         self._pixmap = QtGui.QPixmap.fromImage(qimg.copy())
         self._rescale()
 
-    def resizeEvent(self, e):  # noqa: N802
+    def clear_image(self, placeholder: str) -> None:
+        self._pixmap = None
+        self.setText(placeholder)
+
+    def resizeEvent(self, e):
         super().resizeEvent(e)
         self._rescale()
 
@@ -75,13 +79,7 @@ class ImageView(QtWidgets.QLabel):
         self.setPixmap(scaled)
 
 
-# ========================================================================= #
-#                              SingleImageTab
-# ========================================================================= #
 class SingleImageTab(QtWidgets.QWidget):
-    """Tab xử lý 1 ảnh: chọn file, chọn thuật toán, điều chỉnh tham số,
-    xem Before/After, bảng chỉ số no-reference."""
-
     HIGHER_IS_BETTER = {
         "Contrast (RMS)", "Saturation", "Colorfulness",
         "Avg Gradient", "Sharpness (LapVar)", "Entropy (Shannon)",
@@ -89,94 +87,136 @@ class SingleImageTab(QtWidgets.QWidget):
     }
     LOWER_IS_BETTER = {"Haze Index", "NIQE"}
 
+    PLACEHOLDER_BEFORE = "🌫️\n\nẢNH CÓ SƯƠNG MÙ\nMở ảnh hoặc kéo-thả vào đây"
+    PLACEHOLDER_AFTER = "✨\n\nẢNH ĐÃ KHỬ SƯƠNG MÙ\nNhấn ▶ để xử lý"
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.hazy_img: Optional[np.ndarray] = None
         self.result_img: Optional[np.ndarray] = None
         self.worker: Optional[DehazeWorker] = None
+        self._param_values: dict = {}
         self._build_ui()
         self.setAcceptDrops(True)
 
-    # ---------------------------- UI ---------------------------- #
     def _build_ui(self) -> None:
         root = QtWidgets.QHBoxLayout(self)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(14)
 
-        # --- Panel trái: điều khiển ---
-        left = QtWidgets.QVBoxLayout()
-        left.setSpacing(10)
+        root.addWidget(self._build_left_panel())
+        root.addWidget(self._build_center_panel(), stretch=2)
+        root.addWidget(self._build_right_panel())
 
-        btn_open = QtWidgets.QPushButton("📂 Mở ảnh hazy…")
+    def _build_left_panel(self) -> QtWidgets.QWidget:
+        wrapper = QtWidgets.QWidget()
+        wrapper.setFixedWidth(310)
+        layout = QtWidgets.QVBoxLayout(wrapper)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        file_box = QtWidgets.QGroupBox("Tệp ảnh")
+        file_layout = QtWidgets.QVBoxLayout(file_box)
+        file_layout.setSpacing(8)
+        btn_open = QtWidgets.QPushButton("📂  Mở ảnh hazy…")
+        btn_open.setProperty("variant", "primary")
         btn_open.clicked.connect(self.on_open_hazy)
-        left.addWidget(btn_open)
+        file_layout.addWidget(btn_open)
 
-        left.addWidget(QtWidgets.QLabel("Thuật toán:"))
+        self.btn_save = QtWidgets.QPushButton("💾  Lưu kết quả…")
+        self.btn_save.clicked.connect(self.on_save)
+        self.btn_save.setEnabled(False)
+        file_layout.addWidget(self.btn_save)
+
+        self.lbl_filename = QtWidgets.QLabel("Chưa chọn ảnh")
+        self.lbl_filename.setStyleSheet("color:#64748b; font-size:11px;")
+        self.lbl_filename.setWordWrap(True)
+        file_layout.addWidget(self.lbl_filename)
+        layout.addWidget(file_box)
+
+        algo_box = QtWidgets.QGroupBox("Thuật toán")
+        algo_layout = QtWidgets.QVBoxLayout(algo_box)
+        algo_layout.setSpacing(10)
         self.cb_algo = QtWidgets.QComboBox()
         self.cb_algo.addItems(list(ALGORITHMS.keys()))
         self.cb_algo.currentTextChanged.connect(self._update_param_panel)
-        left.addWidget(self.cb_algo)
+        algo_layout.addWidget(self.cb_algo)
 
-        self.param_group = QtWidgets.QGroupBox("Tham số")
-        self.param_layout = QtWidgets.QFormLayout(self.param_group)
-        left.addWidget(self.param_group)
+        self.param_widget = QtWidgets.QWidget()
+        self.param_layout = QtWidgets.QFormLayout(self.param_widget)
+        self.param_layout.setHorizontalSpacing(10)
+        self.param_layout.setVerticalSpacing(8)
+        self.param_layout.setContentsMargins(0, 4, 0, 0)
+        algo_layout.addWidget(self.param_widget)
+        layout.addWidget(algo_box)
 
-        self.btn_run = QtWidgets.QPushButton("▶ Khử sương mù")
+        run_box = QtWidgets.QGroupBox("Xử lý")
+        run_layout = QtWidgets.QVBoxLayout(run_box)
+        run_layout.setSpacing(8)
+        self.btn_run = QtWidgets.QPushButton("▶  Khử sương mù")
+        self.btn_run.setProperty("variant", "success")
         self.btn_run.clicked.connect(self.on_run)
-        self.btn_run.setStyleSheet(
-            "QPushButton{background:#2d7cff; color:white; padding:8px; font-weight:600;}"
-            "QPushButton:disabled{background:#555;}"
-        )
-        left.addWidget(self.btn_run)
+        run_layout.addWidget(self.btn_run)
 
-        self.btn_save = QtWidgets.QPushButton("💾 Lưu kết quả…")
-        self.btn_save.clicked.connect(self.on_save)
-        self.btn_save.setEnabled(False)
-        left.addWidget(self.btn_save)
+        self.time_label = QtWidgets.QLabel("⏱  Thời gian xử lý: —")
+        self.time_label.setStyleSheet(INFO_CARD_QSS)
+        run_layout.addWidget(self.time_label)
+        layout.addWidget(run_box)
 
-        self.time_label = QtWidgets.QLabel("Thời gian xử lý: —")
-        self.time_label.setStyleSheet(
-            "background:#f0f4ff; padding:6px; border-radius:4px;"
-            "border:1px solid #c7d4ff; font-family:Consolas; font-size:12px;"
-        )
-        left.addWidget(self.time_label)
-
-        left.addStretch()
-        left_w = QtWidgets.QWidget()
-        left_w.setLayout(left)
-        left_w.setFixedWidth(300)
-        root.addWidget(left_w)
-
-        # --- Panel giữa: Before / After ---
-        center_w = QtWidgets.QWidget()
-        center = QtWidgets.QGridLayout(center_w)
-        self.view_before = ImageView("BEFORE (ảnh có sương mù)")
-        self.view_after = ImageView("AFTER (đã khử sương mù)")
-        center.addWidget(self._wrap("Before", self.view_before), 0, 0)
-        center.addWidget(self._wrap("After", self.view_after), 0, 1)
-        root.addWidget(center_w, stretch=2)
-
-        # --- Panel phải: bảng chỉ số ---
-        right_w = QtWidgets.QWidget()
-        right_w.setFixedWidth(340)
-        right = QtWidgets.QVBoxLayout(right_w)
-        h = QtWidgets.QLabel("📊 Chỉ số chất lượng ảnh")
-        h.setStyleSheet("font-weight:700; font-size:14px; padding:4px;")
-        right.addWidget(h)
-        self.metric_table = self._make_metrics_table()
-        right.addWidget(self.metric_table, stretch=1)
-        right.addWidget(self._make_metrics_legend())
-        root.addWidget(right_w)
-
+        layout.addStretch()
         self._update_param_panel(self.cb_algo.currentText())
+        return wrapper
 
-    def _wrap(self, title: str, widget: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    def _build_center_panel(self) -> QtWidgets.QWidget:
+        wrapper = QtWidgets.QWidget()
+        layout = QtWidgets.QGridLayout(wrapper)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setHorizontalSpacing(12)
+        layout.setVerticalSpacing(8)
+
+        self.view_before = ImageView(self.PLACEHOLDER_BEFORE)
+        self.view_after = ImageView(self.PLACEHOLDER_AFTER)
+
+        layout.addWidget(self._labeled_view("BEFORE", self.view_before), 0, 0)
+        layout.addWidget(self._labeled_view("AFTER", self.view_after), 0, 1)
+        return wrapper
+
+    def _labeled_view(self, title: str, view: ImageView) -> QtWidgets.QWidget:
         w = QtWidgets.QWidget()
         v = QtWidgets.QVBoxLayout(w)
         v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(6)
         lab = QtWidgets.QLabel(title)
-        lab.setStyleSheet("font-weight:600; padding:2px;")
+        lab.setStyleSheet(
+            f"color:{PRIMARY}; font-weight:700; letter-spacing:1px; font-size:11px;"
+        )
         v.addWidget(lab)
-        v.addWidget(widget)
+        v.addWidget(view)
         return w
+
+    def _build_right_panel(self) -> QtWidgets.QWidget:
+        wrapper = QtWidgets.QWidget()
+        wrapper.setFixedWidth(360)
+        layout = QtWidgets.QVBoxLayout(wrapper)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        title = QtWidgets.QLabel("📊 Chỉ số chất lượng")
+        title.setStyleSheet("font-weight:700; font-size:14px; padding:2px 4px;")
+        layout.addWidget(title)
+
+        self.metric_table = self._make_metrics_table()
+        layout.addWidget(self.metric_table, stretch=1)
+
+        legend = QtWidgets.QLabel(
+            "<b>▲ Xanh</b>: tốt hơn &nbsp;·&nbsp; <b>▼ Đỏ</b>: kém hơn<br>"
+            "Sau khi khử sương: Contrast / Saturation / Colorfulness / "
+            "Sharpness / Entropy thường <b>tăng</b>; Haze Index, NIQE thường <b>giảm</b>."
+        )
+        legend.setWordWrap(True)
+        legend.setStyleSheet(LEGEND_CARD_QSS)
+        layout.addWidget(legend)
+        return wrapper
 
     def _make_metrics_table(self) -> QtWidgets.QTableWidget:
         t = QtWidgets.QTableWidget(0, 3)
@@ -192,27 +232,9 @@ class SingleImageTab(QtWidgets.QWidget):
         t.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         t.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         t.setAlternatingRowColors(True)
-        t.setStyleSheet(
-            "QTableWidget{font-family:Consolas; font-size:11px;}"
-            "QHeaderView::section{background:#e8eef7; padding:4px; font-weight:600;}"
-        )
+        t.setShowGrid(False)
         return t
 
-    def _make_metrics_legend(self) -> QtWidgets.QLabel:
-        txt = (
-            "<span style='font-size:10px; color:#555;'>"
-            "▲ <span style='color:#1a8c36;'>xanh</span>: tốt hơn &nbsp;&nbsp;"
-            "▼ <span style='color:#c73030;'>đỏ</span>: xấu hơn<br>"
-            "Sau khi khử sương mù, <b>Contrast, Saturation, Colorfulness, "
-            "Sharpness, Entropy</b> thường tăng; <b>Haze Index, NIQE</b> thường giảm."
-            "</span>"
-        )
-        lab = QtWidgets.QLabel(txt)
-        lab.setWordWrap(True)
-        lab.setStyleSheet("padding:6px; background:#fafafa; border:1px solid #ddd;")
-        return lab
-
-    # ---------------------------- Metric table ---------------------------- #
     def _update_metrics_table(self) -> None:
         t = self.metric_table
         t.setRowCount(0)
@@ -226,13 +248,15 @@ class SingleImageTab(QtWidgets.QWidget):
             else {k: None for k in before}
         )
 
-        for name in before.keys():
-            b_val = before[name]
+        for name, b_val in before.items():
             a_val = after.get(name)
-
             row = t.rowCount()
             t.insertRow(row)
-            t.setItem(row, 0, QtWidgets.QTableWidgetItem(name))
+
+            name_item = QtWidgets.QTableWidgetItem(name)
+            name_item.setFont(QtGui.QFont("Segoe UI", 10, QtGui.QFont.DemiBold))
+            t.setItem(row, 0, name_item)
+
             t.setItem(row, 1, QtWidgets.QTableWidgetItem(self._fmt(b_val)))
 
             item_a = QtWidgets.QTableWidgetItem(self._fmt(a_val))
@@ -243,6 +267,7 @@ class SingleImageTab(QtWidgets.QWidget):
                     item_a.setForeground(QtGui.QBrush(QtGui.QColor(color)))
                     arrow = "▲" if delta > 0 else ("▼" if delta < 0 else "=")
                     item_a.setText(f"{arrow} {self._fmt(a_val)}")
+                    item_a.setFont(QtGui.QFont("Segoe UI", 10, QtGui.QFont.Bold))
             t.setItem(row, 2, item_a)
 
         t.resizeRowsToContents()
@@ -261,12 +286,11 @@ class SingleImageTab(QtWidgets.QWidget):
         if abs(delta) < 1e-6:
             return None
         if name in self.HIGHER_IS_BETTER:
-            return "#1a8c36" if delta > 0 else "#c73030"
+            return SUCCESS if delta > 0 else DANGER
         if name in self.LOWER_IS_BETTER:
-            return "#1a8c36" if delta < 0 else "#c73030"
+            return SUCCESS if delta < 0 else DANGER
         return None
 
-    # ---------------------------- Param panels ---------------------------- #
     def _clear_param_layout(self) -> None:
         while self.param_layout.rowCount():
             self.param_layout.removeRow(0)
@@ -277,6 +301,11 @@ class SingleImageTab(QtWidgets.QWidget):
         slider.setRange(0, steps)
         slider.setValue(int(round((default - lo) / step)))
         val_lbl = QtWidgets.QLabel(f"{default:.3g}")
+        val_lbl.setMinimumWidth(48)
+        val_lbl.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        val_lbl.setStyleSheet(
+            f"color:{PRIMARY}; font-family:Consolas; font-weight:600;"
+        )
 
         def on_change(v):
             fv = lo + v * step
@@ -298,17 +327,19 @@ class SingleImageTab(QtWidgets.QWidget):
         spin.setRange(lo, hi)
         spin.setSingleStep(step)
         spin.setValue(default)
-        spin.valueChanged.connect(lambda v: self._param_values.__setitem__(name, v))
+        spin.valueChanged.connect(
+            lambda v, k=name: self._param_values.__setitem__(k, v)
+        )
         self._param_values[name] = default
         self.param_layout.addRow(label, spin)
 
     def _update_param_panel(self, algo: str) -> None:
         self._clear_param_layout()
-        self._param_values: dict = {}
+        self._param_values = {}
         if algo == "DCP":
             self._add_spin_int("patch_size", "Patch size", 3, 31, 15, 2)
             self._add_slider("omega", "Omega", 0.5, 1.0, 0.95, 0.01)
-            self._add_slider("t0", "t₀ (min transmission)", 0.01, 0.3, 0.1, 0.01)
+            self._add_slider("t0", "t₀ (min trans.)", 0.01, 0.3, 0.1, 0.01)
             self._add_spin_int("guided_radius", "Guided radius", 10, 120, 60, 5)
         elif algo == "CLAHE":
             self._add_slider("clip_limit", "Clip limit", 1.0, 10.0, 2.0, 0.1)
@@ -321,9 +352,8 @@ class SingleImageTab(QtWidgets.QWidget):
             self._add_slider("clip_limit", "CLAHE clip", 1.0, 5.0, 1.5, 0.1)
             self._add_spin_int("patch_size", "DCP patch", 3, 31, 15, 2)
             self._add_slider("omega", "Omega", 0.5, 1.0, 0.95, 0.01)
-            self._add_slider("blend", "Blend w/ original", 0.0, 0.5, 0.0, 0.02)
+            self._add_slider("blend", "Blend w/ orig", 0.0, 0.5, 0.0, 0.02)
 
-    # ---------------------------- File actions ---------------------------- #
     def on_open_hazy(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "Chọn ảnh hazy", "", "Images (*.png *.jpg *.jpeg *.bmp *.tif)"
@@ -335,13 +365,15 @@ class SingleImageTab(QtWidgets.QWidget):
         try:
             self.hazy_img = load_image(path, as_float=True)
             self.view_before.set_image(self.hazy_img)
-            self.view_after.setText("AFTER\n(nhấn ▶ để xử lý)")
+            self.view_after.clear_image(self.PLACEHOLDER_AFTER)
             self.result_img = None
             self.btn_save.setEnabled(False)
-            self.time_label.setText("Thời gian xử lý: —")
+            self.time_label.setText("⏱  Thời gian xử lý: —")
+            self.lbl_filename.setText(f"📷 {Path(path).name}")
             self._update_metrics_table()
-            if self.parent() and hasattr(self.parent(), "statusBar"):
-                self.parent().statusBar().showMessage(f"Đã tải: {Path(path).name}")
+            mw = self.window()
+            if hasattr(mw, "statusBar"):
+                mw.statusBar().showMessage(f"Đã tải: {Path(path).name}")
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, "Lỗi", str(e))
 
@@ -353,13 +385,18 @@ class SingleImageTab(QtWidgets.QWidget):
         )
         if path:
             save_image(path, self.result_img)
+            mw = self.window()
+            if hasattr(mw, "statusBar"):
+                mw.statusBar().showMessage(f"Đã lưu: {path}")
 
-    # ---------------------------- Run ---------------------------- #
     def on_run(self) -> None:
         if self.hazy_img is None:
-            QtWidgets.QMessageBox.information(self, "Chú ý", "Hãy mở một ảnh trước.")
+            QtWidgets.QMessageBox.information(
+                self, "Chú ý", "Hãy mở một ảnh trước."
+            )
             return
         self.btn_run.setEnabled(False)
+        self.btn_run.setText("⏳  Đang xử lý…")
 
         algo = self.cb_algo.currentText()
         self.worker = DehazeWorker(algo, self.hazy_img, dict(self._param_values))
@@ -371,20 +408,21 @@ class SingleImageTab(QtWidgets.QWidget):
         self.result_img = result
         self.view_after.set_image(result)
         self.btn_run.setEnabled(True)
+        self.btn_run.setText("▶  Khử sương mù")
         self.btn_save.setEnabled(True)
-        self.time_label.setText(f"Thời gian xử lý: {dt_ms:.1f} ms")
+        self.time_label.setText(f"⏱  Thời gian xử lý: {dt_ms:.1f} ms")
         self._update_metrics_table()
 
     def _on_error(self, msg: str) -> None:
         self.btn_run.setEnabled(True)
+        self.btn_run.setText("▶  Khử sương mù")
         QtWidgets.QMessageBox.critical(self, "Lỗi xử lý", msg)
 
-    # ---------------------------- Drag & Drop ---------------------------- #
-    def dragEnterEvent(self, e):  # noqa: N802
+    def dragEnterEvent(self, e):
         if e.mimeData().hasUrls():
             e.acceptProposedAction()
 
-    def dropEvent(self, e):  # noqa: N802
+    def dropEvent(self, e):
         for url in e.mimeData().urls():
             path = url.toLocalFile()
             if path:
@@ -392,39 +430,64 @@ class SingleImageTab(QtWidgets.QWidget):
                 break
 
 
-# ========================================================================= #
-#                                 MainWindow
-# ========================================================================= #
 class MainWindow(QtWidgets.QMainWindow):
-    """Cửa sổ chính, chứa 2 tab."""
-
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Ứng dụng khử sương mù ảnh số")
-        self.resize(1400, 820)
+        self.setWindowTitle("Dehaze Studio — Ứng dụng khử sương mù ảnh số")
+        self.resize(1440, 880)
+        self.setMinimumSize(1180, 720)
+
+        central = QtWidgets.QWidget()
+        v = QtWidgets.QVBoxLayout(central)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
+        v.addWidget(self._build_header())
 
         self.tabs = QtWidgets.QTabWidget()
-        self.tabs.setStyleSheet(
-            "QTabBar::tab{padding:8px 20px; font-size:13px;}"
-            "QTabBar::tab:selected{background:#2d7cff; color:white; font-weight:600;}"
-        )
-
+        self.tabs.setDocumentMode(True)
         self.tab_single = SingleImageTab(self)
         self.tab_bench = BenchmarkTab(self)
-
-        self.tabs.addTab(self.tab_single, "🖼️  Xử lý ảnh đơn")
+        self.tabs.addTab(self.tab_single, "🖼  Xử lý ảnh đơn")
         self.tabs.addTab(self.tab_bench, "📊  Đánh giá Dataset")
+        v.addWidget(self.tabs, stretch=1)
 
-        self.setCentralWidget(self.tabs)
+        self.setCentralWidget(central)
         self.statusBar().showMessage("Sẵn sàng.")
 
+    def _build_header(self) -> QtWidgets.QWidget:
+        bar = QtWidgets.QWidget()
+        bar.setFixedHeight(58)
+        bar.setStyleSheet(f"background:{PRIMARY}; color:white;")
+        h = QtWidgets.QHBoxLayout(bar)
+        h.setContentsMargins(20, 8, 20, 8)
+        h.setSpacing(12)
 
-# ========================================================================= #
-#                                  Entry
-# ========================================================================= #
+        title = QtWidgets.QLabel("🌫️  Dehaze Studio")
+        title.setStyleSheet(
+            "color:white; font-size:18px; font-weight:700; letter-spacing:0.5px;"
+        )
+        h.addWidget(title)
+
+        subtitle = QtWidgets.QLabel("DCP · CLAHE · CAP · Hybrid")
+        subtitle.setStyleSheet(
+            "color:rgba(255,255,255,0.85); font-size:12px; padding-left:6px;"
+        )
+        h.addWidget(subtitle)
+        h.addStretch()
+
+        version = QtWidgets.QLabel("v1.1")
+        version.setStyleSheet(
+            "color:rgba(255,255,255,0.85); font-size:11px;"
+            "background:rgba(255,255,255,0.15); padding:4px 10px; border-radius:10px;"
+        )
+        h.addWidget(version)
+        return bar
+
+
 def run() -> int:
     app = QtWidgets.QApplication(sys.argv)
     app.setStyle("Fusion")
+    app.setStyleSheet(APP_QSS)
     w = MainWindow()
     w.show()
     return app.exec_()

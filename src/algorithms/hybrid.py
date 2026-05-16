@@ -17,7 +17,6 @@ def dehaze_hybrid(
     guided_eps: float = 1e-3,
     blend: float = 0.0,
 ) -> np.ndarray:
-
     pre = dehaze_clahe(img, clip_limit=clip_limit, tile_grid_size=tile_grid_size)
     J = dehaze_dcp(
         pre,
@@ -28,5 +27,9 @@ def dehaze_hybrid(
         guided_eps=guided_eps,
     )
     if blend > 0:
-        J = np.clip((1.0 - blend) * J + blend * img, 0, 1)
+        if img.dtype == np.uint8:
+            img_f = img.astype(np.float32) * (1.0 / 255.0)
+        else:
+            img_f = img
+        J = np.clip((1.0 - blend) * J + blend * img_f, 0.0, 1.0)
     return J

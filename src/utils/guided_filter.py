@@ -6,7 +6,9 @@ import numpy as np
 
 def _box_filter(img: np.ndarray, radius: int) -> np.ndarray:
     ksize = 2 * radius + 1
-    return cv2.blur(img, (ksize, ksize))
+    return cv2.boxFilter(
+        img, ddepth=-1, ksize=(ksize, ksize), borderType=cv2.BORDER_REFLECT
+    )
 
 
 def guided_filter(
@@ -16,26 +18,27 @@ def guided_filter(
     eps: float = 1e-3,
 ) -> np.ndarray:
     if guide.ndim == 3:
-        guide_gray = cv2.cvtColor(
-            (guide * 255).astype(np.uint8), cv2.COLOR_RGB2GRAY
-        ).astype(np.float32) / 255.0
+        guide_u8 = (
+            guide if guide.dtype == np.uint8
+            else np.clip(guide * 255.0, 0, 255).astype(np.uint8)
+        )
+        guide_gray = cv2.cvtColor(guide_u8, cv2.COLOR_RGB2GRAY).astype(
+            np.float32
+        ) * (1.0 / 255.0)
     else:
-        guide_gray = guide.astype(np.float32)
+        guide_gray = guide.astype(np.float32, copy=False)
 
-    src = src.astype(np.float32)
+    src_f = src.astype(np.float32, copy=False)
 
     mean_I = _box_filter(guide_gray, radius)
-    mean_p = _box_filter(src, radius)
-    mean_Ip = _box_filter(guide_gray * src, radius)
-    cov_Ip = mean_Ip - mean_I * mean_p
+    mean_p = _box_filter(src_f, radius)
+    corr_Ip = _box_filter(guide_gray * src_f, radius)
+    corr_II = _box_filter(guide_gray * guide_gray, radius)
 
-    mean_II = _box_filter(guide_gray * guide_gray, radius)
-    var_I = mean_II - mean_I * mean_I
+    var_I = corr_II - mean_I * mean_I
+    cov_Ip = corr_Ip - mean_I * mean_p
 
     a = cov_Ip / (var_I + eps)
     b = mean_p - a * mean_I
 
-    mean_a = _box_filter(a, radius)
-    mean_b = _box_filter(b, radius)
-
-    return mean_a * guide_gray + mean_b
+    return _box_filter(a, radius) * guide_gray + _box_filter(b, radius)

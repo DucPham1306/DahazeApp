@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import argparse
-import os
 import time
 from pathlib import Path
 from typing import List
 
-import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
@@ -27,14 +25,16 @@ def run_single(
     gt_path: str,
     save_dir: Path | None,
     subset: str,
-) -> dict:
-    """Chạy 1 thuật toán trên 1 ảnh, trả về dict metrics."""
-    algo_fn = ALGORITHMS[algo_name]
-    hazy = load_image(hazy_path, as_float=True)
-    gt = load_image(gt_path, as_float=True)
+    cached_pair: tuple | None = None,
+) -> tuple[dict, tuple]:
+    if cached_pair is None:
+        hazy = load_image(hazy_path, as_float=True)
+        gt = load_image(gt_path, as_float=True)
+    else:
+        hazy, gt = cached_pair
 
     t0 = time.perf_counter()
-    pred = algo_fn(hazy)
+    pred = ALGORITHMS[algo_name](hazy)
     elapsed_ms = (time.perf_counter() - t0) * 1000
 
     metrics = {
@@ -45,7 +45,7 @@ def run_single(
         "ssim": compute_ssim(pred, gt),
         "entropy": compute_entropy(pred),
         "edge_vis": compute_edge_visibility(pred),
-        "niqe": compute_niqe(pred),  # có thể None nếu chưa cài pyiqa
+        "niqe": compute_niqe(pred),
         "time_ms": elapsed_ms,
     }
 
@@ -54,7 +54,7 @@ def run_single(
         out_dir.mkdir(parents=True, exist_ok=True)
         save_image(out_dir / Path(hazy_path).name, pred)
 
-    return metrics
+    return metrics, (hazy, gt)
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -97,25 +97,24 @@ def main(argv: List[str] | None = None) -> int:
     for subset, pairs in pairs_by_subset.items():
         if args.limit > 0:
             pairs = pairs[: args.limit]
-        for algo in args.algorithms:
-            print(f"\n>>> {subset.upper()} - {algo} ({len(pairs)} ảnh)")
-            for hazy_p, gt_p in tqdm(pairs, ncols=80):
+        for hazy_p, gt_p in tqdm(pairs, ncols=80, desc=f">>> {subset.upper()}"):
+            cached: tuple | None = None
+            for algo in args.algorithms:
                 try:
-                    records.append(
-                        run_single(algo, hazy_p, gt_p, img_dir, subset)
+                    rec, cached = run_single(
+                        algo, hazy_p, gt_p, img_dir, subset, cached
                     )
+                    records.append(rec)
                 except Exception as e:
-                    print(f"  [!] Lỗi với {hazy_p}: {e}")
+                    print(f"  [!] Lỗi với {hazy_p} / {algo}: {e}")
 
     df = pd.DataFrame(records)
     csv_path = out_dir / "metrics.csv"
     df.to_csv(csv_path, index=False)
     print(f"\nĐã lưu CSV: {csv_path}")
 
-    # Tổng hợp
     print("\n===== TỔNG HỢP TRUNG BÌNH =====")
     numeric_cols = ["psnr", "ssim", "entropy", "edge_vis", "niqe", "time_ms"]
-    # tránh lỗi nếu niqe toàn None
     agg_cols = [c for c in numeric_cols if c in df.columns and df[c].notna().any()]
     summary = (
         df.groupby(["subset", "algorithm"])[agg_cols]
@@ -126,7 +125,6 @@ def main(argv: List[str] | None = None) -> int:
     summary_path = out_dir / "summary.csv"
     summary.to_csv(summary_path)
     print(f"\nĐã lưu summary: {summary_path}")
-
     return 0
 
 
