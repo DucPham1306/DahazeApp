@@ -206,7 +206,7 @@ class BenchmarkTab(QtWidgets.QWidget):
 
         results_label = QtWidgets.QLabel("📈 Kết quả trung bình")
         results_label.setStyleSheet(
-            "font-weight:700; font-size:14px; padding:6px 4px 0 4px;"
+            "font-weight:700; font-size:18px; padding:10px 4px 4px 4px;"
         )
         root.addWidget(results_label)
 
@@ -214,7 +214,16 @@ class BenchmarkTab(QtWidgets.QWidget):
             ["Dataset", "Subset", "Thuật toán", "n"]
             + [h for _, h in self.METRIC_COLUMNS]
         )
-        root.addWidget(self.tbl_summary, stretch=1)
+        # Làm bảng kết quả trung bình to và dễ đọc hơn
+        summary_font = QtGui.QFont("Segoe UI", 11)
+        self.tbl_summary.setFont(summary_font)
+        header_font = QtGui.QFont("Segoe UI", 11, QtGui.QFont.Bold)
+        self.tbl_summary.horizontalHeader().setFont(header_font)
+        self.tbl_summary.horizontalHeader().setDefaultSectionSize(105)
+        self.tbl_summary.horizontalHeader().setMinimumSectionSize(80)
+        self.tbl_summary.verticalHeader().setDefaultSectionSize(34)
+        self.tbl_summary.setMinimumHeight(380)
+        root.addWidget(self.tbl_summary, stretch=3)
 
         self.lbl_best = QtWidgets.QLabel("")
         self.lbl_best.setStyleSheet(BEST_CARD_QSS)

@@ -254,6 +254,12 @@ border-radius: 10px;
 font-size: 13px;
 """
 
+IMAGE_VIEW_IMG_QSS = f"""
+background: transparent;
+border: 1px solid {BORDER};
+border-radius: 10px;
+"""
+
 INFO_CARD_QSS = f"""
 background: {ACCENT_BG};
 color: {PRIMARY};

@@ -15,6 +15,7 @@ from .benchmark_tab import BenchmarkTab
 from .style import (
     APP_QSS,
     IMAGE_VIEW_QSS,
+    IMAGE_VIEW_IMG_QSS,
     INFO_CARD_QSS,
     LEGEND_CARD_QSS,
     PRIMARY,
@@ -49,7 +50,14 @@ class ImageView(QtWidgets.QLabel):
         super().__init__(parent)
         self.setAlignment(QtCore.Qt.AlignCenter)
         self.setMinimumSize(420, 320)
-        self.setStyleSheet(IMAGE_VIEW_QSS)
+        # Cho phép widget co lại theo ảnh, tránh khoảng đen thừa
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+        )
+        self.setScaledContents(False)
+        self._placeholder_qss = IMAGE_VIEW_QSS
+        self._image_qss = IMAGE_VIEW_IMG_QSS
+        self.setStyleSheet(self._placeholder_qss)
         self.setText(placeholder)
         self._pixmap: Optional[QtGui.QPixmap] = None
 
@@ -58,10 +66,15 @@ class ImageView(QtWidgets.QLabel):
         h, w, _ = img_u8.shape
         qimg = QtGui.QImage(img_u8.data, w, h, 3 * w, QtGui.QImage.Format_RGB888)
         self._pixmap = QtGui.QPixmap.fromImage(qimg.copy())
+        # Khi có ảnh -> nền trong suốt để không lộ "ô vuông đen" phía dưới/2 bên
+        self.setStyleSheet(self._image_qss)
+        self.setText("")
         self._rescale()
 
     def clear_image(self, placeholder: str) -> None:
         self._pixmap = None
+        # Khi không có ảnh -> trả về nền tối kèm placeholder
+        self.setStyleSheet(self._placeholder_qss)
         self.setText(placeholder)
 
     def resizeEvent(self, e):
@@ -348,11 +361,11 @@ class SingleImageTab(QtWidgets.QWidget):
             self._add_slider("beta", "Beta (scattering)", 0.1, 3.0, 1.0, 0.05)
             self._add_spin_int("min_filter_size", "Min filter", 3, 31, 15, 2)
             self._add_slider("t0", "t₀", 0.01, 0.3, 0.1, 0.01)
-        elif algo == "Hybrid":
-            self._add_slider("clip_limit", "CLAHE clip", 1.0, 5.0, 1.5, 0.1)
-            self._add_spin_int("patch_size", "DCP patch", 3, 31, 15, 2)
+        elif algo == "DCP-Improved":
+            self._add_spin_int("patch_size", "Patch size", 3, 31, 15, 2)
             self._add_slider("omega", "Omega", 0.5, 1.0, 0.95, 0.01)
-            self._add_slider("blend", "Blend w/ orig", 0.0, 0.5, 0.0, 0.02)
+            self._add_slider("t0", "t₀ (min trans.)", 0.01, 0.3, 0.1, 0.01)
+            self._add_spin_int("guided_radius", "Guided radius", 10, 120, 60, 5)
 
     def on_open_hazy(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -468,7 +481,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         h.addWidget(title)
 
-        subtitle = QtWidgets.QLabel("DCP · CLAHE · CAP · Hybrid")
+        subtitle = QtWidgets.QLabel("DCP · DCP-Improved · CLAHE · CAP")
         subtitle.setStyleSheet(
             "color:rgba(255,255,255,0.85); font-size:12px; padding-left:6px;"
         )

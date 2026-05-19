@@ -1,0 +1,5 @@
+subset,algorithm,psnr,ssim,entropy,edge_vis,time_ms
+indoor,DCP,21.62,0.864,7.2082,0.3902,46.1374
+indoor,DCP-Improved,20.3952,0.8217,7.244,0.4232,113.4101
+outdoor,DCP,16.2778,0.8492,7.3032,0.5117,32.5912
+outdoor,DCP-Improved,19.33,0.8875,7.3833,0.5184,95.5777
