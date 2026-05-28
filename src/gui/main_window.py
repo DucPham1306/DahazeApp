@@ -12,6 +12,7 @@ from ..algorithms import ALGORITHMS
 from ..metrics import compute_all_no_reference
 from ..utils import load_image, save_image, to_uint8
 from .benchmark_tab import BenchmarkTab
+from .compare_view import SplitCompareView
 from .style import (
     APP_QSS,
     IMAGE_VIEW_QSS,
@@ -182,17 +183,75 @@ class SingleImageTab(QtWidgets.QWidget):
 
     def _build_center_panel(self) -> QtWidgets.QWidget:
         wrapper = QtWidgets.QWidget()
-        layout = QtWidgets.QGridLayout(wrapper)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setHorizontalSpacing(12)
-        layout.setVerticalSpacing(8)
+        root = QtWidgets.QVBoxLayout(wrapper)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(8)
 
+        # ---- Thanh chuyển chế độ hiển thị ----
+        mode_bar = QtWidgets.QWidget()
+        mb_lay = QtWidgets.QHBoxLayout(mode_bar)
+        mb_lay.setContentsMargins(0, 0, 0, 0)
+        mb_lay.setSpacing(8)
+        mb_lay.addStretch()
+
+        lbl_mode = QtWidgets.QLabel("Chế độ hiển thị:")
+        lbl_mode.setStyleSheet("color:#64748b; font-size:12px;")
+        mb_lay.addWidget(lbl_mode)
+
+        self.btn_mode_side = QtWidgets.QPushButton("⬛⬛  Side-by-side")
+        self.btn_mode_side.setCheckable(True)
+        self.btn_mode_side.setChecked(True)
+        self.btn_mode_side.clicked.connect(lambda: self._set_view_mode(0))
+        mb_lay.addWidget(self.btn_mode_side)
+
+        self.btn_mode_split = QtWidgets.QPushButton("◧  Split slider")
+        self.btn_mode_split.setCheckable(True)
+        self.btn_mode_split.clicked.connect(lambda: self._set_view_mode(1))
+        mb_lay.addWidget(self.btn_mode_split)
+        root.addWidget(mode_bar)
+
+        # ---- Stack chứa 2 chế độ hiển thị ----
+        self.view_stack = QtWidgets.QStackedWidget()
+
+        # Trang 0: side-by-side (cũ)
+        page_side = QtWidgets.QWidget()
+        grid = QtWidgets.QGridLayout(page_side)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(8)
         self.view_before = ImageView(self.PLACEHOLDER_BEFORE)
         self.view_after = ImageView(self.PLACEHOLDER_AFTER)
+        grid.addWidget(self._labeled_view("BEFORE", self.view_before), 0, 0)
+        grid.addWidget(self._labeled_view("AFTER", self.view_after), 0, 1)
+        self.view_stack.addWidget(page_side)
 
-        layout.addWidget(self._labeled_view("BEFORE", self.view_before), 0, 0)
-        layout.addWidget(self._labeled_view("AFTER", self.view_after), 0, 1)
+        # Trang 1: split-view slider
+        page_split = QtWidgets.QWidget()
+        vsplit = QtWidgets.QVBoxLayout(page_split)
+        vsplit.setContentsMargins(0, 0, 0, 0)
+        vsplit.setSpacing(6)
+        lab_split = QtWidgets.QLabel("SO SÁNH BẰNG THANH TRƯỢT  ·  Kéo handle để xem")
+        lab_split.setStyleSheet(
+            f"color:{PRIMARY}; font-weight:700; letter-spacing:1px; font-size:11px;"
+        )
+        vsplit.addWidget(lab_split)
+        self.view_compare = SplitCompareView()
+        vsplit.addWidget(self.view_compare, stretch=1)
+        hint = QtWidgets.QLabel(
+            "💡  Double-click vào ảnh để đưa thanh chia về giữa."
+        )
+        hint.setStyleSheet("color:#64748b; font-size:11px;")
+        vsplit.addWidget(hint)
+        self.view_stack.addWidget(page_split)
+
+        root.addWidget(self.view_stack, stretch=1)
         return wrapper
+
+    def _set_view_mode(self, idx: int) -> None:
+        """0 = side-by-side, 1 = split slider"""
+        self.view_stack.setCurrentIndex(idx)
+        self.btn_mode_side.setChecked(idx == 0)
+        self.btn_mode_split.setChecked(idx == 1)
 
     def _labeled_view(self, title: str, view: ImageView) -> QtWidgets.QWidget:
         w = QtWidgets.QWidget()
@@ -379,6 +438,9 @@ class SingleImageTab(QtWidgets.QWidget):
             self.hazy_img = load_image(path, as_float=True)
             self.view_before.set_image(self.hazy_img)
             self.view_after.clear_image(self.PLACEHOLDER_AFTER)
+            # Đồng bộ vào split compare view
+            self.view_compare.clear()
+            self.view_compare.set_before(self.hazy_img)
             self.result_img = None
             self.btn_save.setEnabled(False)
             self.time_label.setText("⏱  Thời gian xử lý: —")
@@ -420,6 +482,7 @@ class SingleImageTab(QtWidgets.QWidget):
     def _on_done(self, result: np.ndarray, dt_ms: float) -> None:
         self.result_img = result
         self.view_after.set_image(result)
+        self.view_compare.set_after(result)
         self.btn_run.setEnabled(True)
         self.btn_run.setText("▶  Khử sương mù")
         self.btn_save.setEnabled(True)
@@ -488,12 +551,6 @@ class MainWindow(QtWidgets.QMainWindow):
         h.addWidget(subtitle)
         h.addStretch()
 
-        version = QtWidgets.QLabel("v1.1")
-        version.setStyleSheet(
-            "color:rgba(255,255,255,0.85); font-size:11px;"
-            "background:rgba(255,255,255,0.15); padding:4px 10px; border-radius:10px;"
-        )
-        h.addWidget(version)
         return bar
 
 

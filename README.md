@@ -1,141 +1,192 @@
-# Ứng dụng hỗ trợ khử sương mù ảnh số
+# Ứng dụng Khử Sương Mù Ảnh Số
 
-Đề tài đồ án/khoá luận tốt nghiệp — triển khai ứng dụng khử sương mù ảnh số
-bằng các phương pháp **truyền thống / prior-based**: **DCP**, **CLAHE**, **CAP**,
-và pipeline lai **Hybrid (CLAHE + DCP)**.
+Đồ án / khoá luận tốt nghiệp — xây dựng ứng dụng khử sương mù (image dehazing) sử dụng các phương pháp truyền thống dựa trên prior:
 
-## 1. Cấu trúc thư mục
+| Thuật toán | Tên đầy đủ | Mô tả ngắn |
+|---|---|---|
+| **DCP** | Dark Channel Prior | Ước lượng transmission map dựa trên kênh tối nhất |
+| **DCP Improved** | Dark Channel Prior (cải tiến) | Kết hợp guided filter để làm mịn transmission map |
+| **CLAHE** | Contrast Limited Adaptive Histogram Equalization | Tăng cường tương phản cục bộ |
+| **CAP** | Color Attenuation Prior | Ước lượng độ sâu cảnh qua chênh lệch độ sáng–bão hoà |
+| **Hybrid** | CLAHE + DCP | Pipeline kết hợp: CLAHE tiền xử lý, DCP khử sương mù |
+
+---
+
+## Yêu cầu hệ thống
+
+- Python **3.9+**
+- Hệ điều hành: Windows / Linux / macOS
+- RAM: tối thiểu 4 GB (khuyến nghị 8 GB khi chạy benchmark toàn bộ SOTS)
+
+---
+
+## 1. Cài đặt
+
+**Bước 1 — Tạo môi trường ảo (khuyến nghị):**
+
+```bash
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# Linux / macOS
+source venv/bin/activate
+```
+
+**Bước 2 — Cài các thư viện cần thiết:**
+
+```bash
+pip install -r requirements.txt
+```
+
+**Bước 3 (tuỳ chọn) — Cài thêm nếu muốn tính chỉ số NIQE:**
+
+```bash
+pip install pyiqa>=0.1.10 torch>=2.0
+```
+
+> Nếu không cài `pyiqa`, các chỉ số còn lại (PSNR, SSIM, Entropy, Edge visibility) vẫn hoạt động bình thường.
+
+---
+
+## 2. Chuẩn bị dữ liệu SOTS
+
+Tải bộ **RESIDE-SOTS** (Synthetic Objective Testing Set) tại [RESIDE Benchmark](https://sites.google.com/view/reside-dehaze-datasets) và giải nén vào thư mục `data/SOTS/` theo đúng cấu trúc sau:
 
 ```
-dehaze_app/
-├── main.py                 # Entry point chạy GUI
+data/SOTS/
+├── indoor/
+│   ├── hazy/        # ảnh có sương mù,  ví dụ: 1400_1.png, 1400_2.png
+│   └── gt/          # ảnh ground truth,  ví dụ: 1400.png
+└── outdoor/
+    ├── hazy/
+    └── gt/
+```
+
+> **Lưu ý về tên file:** ảnh hazy có dạng `<id>_<số>.png`, ảnh GT chỉ có `<id>.png`. Module `src/utils/io.py` tự động ghép cặp theo phần prefix trước dấu `_`.
+
+---
+
+## 3. Cấu trúc thư mục
+
+```
+DehazeApp/
+├── main.py                        # Entry point — khởi chạy GUI
 ├── requirements.txt
 ├── README.md
 ├── data/
 │   └── SOTS/
 │       ├── indoor/{hazy, gt}/
 │       └── outdoor/{hazy, gt}/
-├── results/                # Kết quả benchmark
+├── results/                       # Kết quả benchmark (sinh tự động)
+│   ├── metrics.csv                # Metric từng ảnh
+│   ├── summary.csv                # Trung bình theo (subset, algorithm)
+│   └── images/<subset>/<algo>/    # Ảnh đã khử sương mù (nếu --save-images)
 └── src/
     ├── algorithms/
-    │   ├── dcp.py          # Dark Channel Prior
-    │   ├── clahe.py        # CLAHE baseline
-    │   ├── cap.py          # Color Attenuation Prior
-    │   └── hybrid.py       # CLAHE + DCP
+    │   ├── dcp.py                 # Dark Channel Prior
+    │   ├── dcp_improved.py        # DCP + guided filter cải tiến
+    │   ├── clahe.py               # CLAHE baseline
+    │   ├── cap.py                 # Color Attenuation Prior
+    │   └── hybrid.py              # Pipeline Hybrid (CLAHE → DCP)
     ├── metrics/
-    │   ├── psnr_ssim.py    # Full-reference
-    │   ├── niqe.py         # No-reference (cần pyiqa)
-    │   └── edge_entropy.py # Entropy + edge visibility
+    │   ├── psnr_ssim.py           # Full-reference: PSNR, SSIM
+    │   ├── niqe.py                # No-reference: NIQE (cần pyiqa)
+    │   ├── no_reference.py        # No-reference tổng hợp
+    │   └── edge_entropy.py        # Entropy + edge visibility
     ├── utils/
-    │   ├── io.py           # Đọc/ghi ảnh, ghép cặp SOTS
-    │   └── guided_filter.py
+    │   ├── io.py                  # Đọc/ghi ảnh, ghép cặp SOTS
+    │   ├── datasets.py            # Dataset loader
+    │   └── guided_filter.py       # Guided filter dùng cho DCP cải tiến
     ├── gui/
-    │   └── main_window.py  # GUI PyQt5
-    └── benchmark.py        # Script chạy toàn bộ SOTS
+    │   ├── main_window.py         # Cửa sổ chính GUI (PyQt5)
+    │   ├── benchmark_tab.py       # Tab chạy benchmark trong GUI
+    │   └── style.py               # Stylesheet của giao diện
+    └── benchmark.py               # Script benchmark dòng lệnh
 ```
 
-## 2. Cài đặt
-
-```bash
-# Khuyến nghị dùng venv
-python -m venv venv
-# Windows
-venv\Scripts\activate
-# Linux/Mac
-source venv/bin/activate
-
-pip install -r requirements.txt
-```
-
-Cài thêm (tuỳ chọn) nếu muốn đo **NIQE**:
-
-```bash
-pip install pyiqa torch
-```
-
-## 3. Chuẩn bị dữ liệu SOTS
-
-Tải bộ **RESIDE-SOTS** (Synthetic Objective Testing Set) và giải nén vào
-`data/SOTS/` với cấu trúc:
-
-```
-data/SOTS/
-├── indoor/
-│   ├── hazy/   # ví dụ 1400_1.png, 1400_2.png, ...
-│   └── gt/     # ví dụ 1400.png, ...
-└── outdoor/
-    ├── hazy/
-    └── gt/
-```
-
-Lưu ý tên file: hazy có dạng `<id>_xxx.png`, gt chỉ có `<id>.png`. Module
-`src/utils/io.py` ghép cặp tự động theo prefix trước dấu `_`.
+---
 
 ## 4. Sử dụng
 
-### 4.1 Chạy GUI
+### 4.1 Chạy giao diện đồ hoạ (GUI)
 
 ```bash
 python main.py
 ```
 
-Trong GUI:
+Các bước thao tác trong GUI:
 
-1. Nhấn **📂 Mở ảnh hazy** (hoặc kéo-thả ảnh vào cửa sổ).
-2. (Tuỳ chọn) Mở **Ground Truth** tương ứng → app tự tính PSNR/SSIM.
-3. Chọn thuật toán DCP / CLAHE / CAP / Hybrid, điều chỉnh tham số.
-4. Nhấn **▶ Khử sương mù** → xem kết quả song song với ảnh gốc.
-5. Nhấn **💾 Lưu kết quả** để xuất ảnh.
+1. Nhấn **Mở ảnh hazy** (hoặc kéo–thả file ảnh vào cửa sổ).
+2. *(Tuỳ chọn)* Nhấn **Mở Ground Truth** — app sẽ tự động tính PSNR/SSIM so sánh.
+3. Chọn thuật toán: `DCP` / `DCP Improved` / `CLAHE` / `CAP` / `Hybrid`.
+4. Điều chỉnh tham số nếu cần, rồi nhấn **Khử sương mù**.
+5. Xem kết quả hiển thị song song với ảnh gốc.
+6. Nhấn **Lưu kết quả** để xuất ảnh ra file.
+7. Chuyển sang tab **Benchmark** để chạy đánh giá hàng loạt ngay trong GUI.
 
-### 4.2 Benchmark trên toàn bộ SOTS
+### 4.2 Chạy benchmark từ dòng lệnh
 
 ```bash
 python -m src.benchmark \
     --sots-root data/SOTS \
-    --out-dir results \
-    --algorithms DCP CLAHE CAP Hybrid \
+    --out-dir   results \
+    --algorithms DCP DCP_Improved CLAHE CAP Hybrid \
     --save-images
 ```
 
-Tham số:
+Các tham số quan trọng:
 
-- `--limit N`: chỉ chạy N ảnh đầu mỗi subset (test nhanh).
-- `--save-images`: lưu ảnh kết quả (tốn ổ cứng).
+| Tham số | Mô tả |
+|---|---|
+| `--sots-root` | Đường dẫn đến thư mục `SOTS/` |
+| `--out-dir` | Thư mục lưu kết quả (mặc định: `results/`) |
+| `--algorithms` | Danh sách thuật toán cần chạy |
+| `--limit N` | Chỉ chạy N ảnh đầu mỗi subset (dùng để kiểm tra nhanh) |
+| `--save-images` | Lưu ảnh kết quả ra file (tốn thêm dung lượng ổ cứng) |
 
-Sau khi chạy xong, kết quả nằm ở:
+Sau khi chạy xong, kết quả nằm trong `results/`:
 
-- `results/metrics.csv` — metric từng ảnh.
-- `results/summary.csv` — trung bình theo (subset, algorithm).
-- `results/images/<subset>/<algo>/…png` — ảnh đã khử sương mù.
+- `metrics.csv` — metric của từng ảnh.
+- `summary.csv` — trung bình theo cặp (subset, algorithm).
+- `images/<subset>/<algo>/` — ảnh đã khử sương mù (nếu bật `--save-images`).
 
-## 5. Ý nghĩa các chỉ số
+---
 
-| Chỉ số          | Loại           | Ý nghĩa                           | Xu hướng tốt                |
-| --------------- | -------------- | --------------------------------- | --------------------------- |
-| PSNR            | Full-reference | Sai khác cường độ so với GT       | Càng cao                    |
-| SSIM            | Full-reference | Tương đồng cấu trúc với GT        | Càng gần 1                  |
-| NIQE            | No-reference   | Chất lượng tự nhiên, không cần GT | Càng thấp                   |
-| Entropy         | No-reference   | Độ giàu thông tin của ảnh         | Càng cao (trong mức hợp lý) |
-| Edge visibility | No-reference   | Tỷ lệ cạnh nhìn thấy              | Càng cao                    |
+## 5. Ý nghĩa các chỉ số đánh giá
 
-## 6. Gợi ý viết báo cáo
+| Chỉ số | Loại | Ý nghĩa | Tốt khi |
+|---|---|---|---|
+| **PSNR** (dB) | Full-reference | Sai khác cường độ pixel so với GT | Càng **cao** càng tốt |
+| **SSIM** | Full-reference | Tương đồng cấu trúc so với GT, thang 0–1 | Càng **gần 1** càng tốt |
+| **NIQE** | No-reference | Chất lượng tự nhiên, không cần GT | Càng **thấp** càng tốt |
+| **Entropy** | No-reference | Mức độ giàu thông tin của ảnh | Càng **cao** (trong mức hợp lý) |
+| **Edge visibility** | No-reference | Tỷ lệ cạnh hiển thị rõ sau khử sương | Càng **cao** càng tốt |
 
-- **Chương 1**: Tổng quan bài toán, ứng dụng thực tế.
-- **Chương 2**: Mô hình Atmospheric Scattering, chi tiết DCP/CLAHE/CAP,
-  ưu/nhược của mỗi phương pháp. Dùng code trong `src/algorithms/` làm minh hoạ.
-- **Chương 3**: Kiến trúc hệ thống, Use Case diagram, thiết kế GUI
-  (chụp màn hình từ `main.py`).
-- **Chương 4**: Thực nghiệm — chạy `src/benchmark.py`, dùng `metrics.csv`
-  dựng biểu đồ so sánh (matplotlib). Phân tích theo indoor/outdoor,
-  trade-off chất lượng ↔ tốc độ.
+> PSNR và SSIM yêu cầu ảnh ground truth. NIQE, Entropy, Edge visibility có thể dùng với ảnh thực tế không có GT.
+
+---
+
+## 6. Gợi ý cấu trúc báo cáo
+
+- **Chương 1 — Giới thiệu:** Bài toán khử sương mù, ứng dụng thực tế (giao thông, giám sát, ảnh vệ tinh), phạm vi đồ án.
+- **Chương 2 — Cơ sở lý thuyết:** Mô hình Atmospheric Scattering, nguyên lý của từng thuật toán (DCP, CLAHE, CAP, Hybrid), ưu và nhược điểm. Lấy code trong `src/algorithms/` làm minh hoạ.
+- **Chương 3 — Thiết kế hệ thống:** Kiến trúc module, Use Case diagram, thiết kế giao diện (chụp màn hình từ `main.py`).
+- **Chương 4 — Thực nghiệm:** Chạy `src/benchmark.py` trên SOTS, vẽ biểu đồ so sánh từ `metrics.csv` (dùng matplotlib/pandas). Phân tích kết quả theo indoor/outdoor, trade-off chất lượng ↔ tốc độ xử lý.
+
+---
 
 ## 7. Hướng phát triển
 
-- DCP với cửa sổ thích nghi (patch size thay đổi theo vùng).
-- Pipeline Hybrid với post-processing cân bằng trắng.
-- Tối ưu tốc độ bằng vectorization / Numba / CUDA.
-- Bổ sung thêm chỉ số FADE (Fog Aware Density Evaluator).
+- DCP với patch size thích nghi theo từng vùng ảnh.
+- Tích hợp cân bằng trắng vào pipeline Hybrid.
+- Tăng tốc bằng vectorization, Numba, hoặc CUDA.
+- Bổ sung chỉ số FADE (Fog Aware Density Evaluator).
+- Thêm phương pháp học sâu (DehazeNet, AOD-Net) để so sánh.
+
+---
 
 ## 8. Giấy phép
 
-Mã nguồn chỉ phục vụ mục đích học thuật, luận văn tốt nghiệp.
+Mã nguồn được phát triển phục vụ mục đích **học thuật** (đồ án / khoá luận tốt nghiệp). Không sử dụng cho mục đích thương mại.
