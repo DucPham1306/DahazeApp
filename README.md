@@ -7,7 +7,6 @@
 | **DCP** | Dark Channel Prior | Ước lượng transmission map dựa trên kênh tối nhất |
 | **DCP Improved** | Dark Channel Prior (cải tiến) | Kết hợp guided filter để làm mịn transmission map |
 | **CLAHE** | Contrast Limited Adaptive Histogram Equalization | Tăng cường tương phản cục bộ |
-| **CAP** | Color Attenuation Prior | Ước lượng độ sâu cảnh qua chênh lệch độ sáng–bão hoà |
 | **Hybrid** | CLAHE + DCP | Pipeline kết hợp: CLAHE tiền xử lý, DCP khử sương mù |
 
 ---
@@ -120,7 +119,7 @@ Các bước thao tác trong GUI:
 
 1. Nhấn **Mở ảnh hazy** (hoặc kéo–thả file ảnh vào cửa sổ).
 2. *(Tuỳ chọn)* Nhấn **Mở Ground Truth** — app sẽ tự động tính PSNR/SSIM so sánh.
-3. Chọn thuật toán: `DCP` / `DCP Improved` / `CLAHE` / `CAP` / `Hybrid`.
+3. Chọn thuật toán: `DCP` / `DCP Improved` / `CLAHE` / `Hybrid`.
 4. Điều chỉnh tham số nếu cần, rồi nhấn **Khử sương mù**.
 5. Xem kết quả hiển thị song song với ảnh gốc.
 6. Nhấn **Lưu kết quả** để xuất ảnh ra file.
@@ -132,7 +131,7 @@ Các bước thao tác trong GUI:
 python -m src.benchmark \
     --sots-root data/SOTS \
     --out-dir   results \
-    --algorithms DCP DCP_Improved CLAHE CAP Hybrid \
+    --algorithms DCP DCP_Improved CLAHE Hybrid \
     --save-images
 ```
 
@@ -171,7 +170,7 @@ Sau khi chạy xong, kết quả nằm trong `results/`:
 ## 6. Gợi ý cấu trúc báo cáo
 
 - **Chương 1 — Giới thiệu:** Bài toán khử sương mù, ứng dụng thực tế (giao thông, giám sát, ảnh vệ tinh), phạm vi đồ án.
-- **Chương 2 — Cơ sở lý thuyết:** Mô hình Atmospheric Scattering, nguyên lý của từng thuật toán (DCP, CLAHE, CAP, Hybrid), ưu và nhược điểm. Lấy code trong `src/algorithms/` làm minh hoạ.
+- **Chương 2 — Cơ sở lý thuyết:** Mô hình Atmospheric Scattering, nguyên lý của từng thuật toán (DCP, CLAHE, Hybrid), ưu và nhược điểm. Lấy code trong `src/algorithms/` làm minh hoạ.
 - **Chương 3 — Thiết kế hệ thống:** Kiến trúc module, Use Case diagram, thiết kế giao diện (chụp màn hình từ `main.py`).
 - **Chương 4 — Thực nghiệm:** Chạy `src/benchmark.py` trên SOTS, vẽ biểu đồ so sánh từ `metrics.csv` (dùng matplotlib/pandas). Phân tích kết quả theo indoor/outdoor, trade-off chất lượng ↔ tốc độ xử lý.
 

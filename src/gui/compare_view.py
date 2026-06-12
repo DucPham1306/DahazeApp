@@ -1,13 +1,3 @@
-"""
-SplitCompareView — widget so sánh trước/sau bằng thanh trượt dọc.
-
-Cách dùng:
-    view = SplitCompareView()
-    view.set_before(hazy_img_np)
-    view.set_after(dehazed_img_np)
-
-Người dùng kéo thanh chia dọc giữa ảnh để tăng/giảm vùng hiển thị BEFORE / AFTER.
-"""
 from __future__ import annotations
 
 from typing import Optional
@@ -16,11 +6,10 @@ import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..utils import to_uint8
-from .style import PRIMARY, BORDER
+from .style import PRIMARY, BORDER, CANVAS, CANVAS_TEXT
 
 
 class SplitCompareView(QtWidgets.QWidget):
-    """Hiển thị 2 ảnh chồng nhau với thanh trượt kéo để so sánh BEFORE vs AFTER."""
 
     PLACEHOLDER_EMPTY = (
         "🖱️\n\n"
@@ -31,9 +20,8 @@ class SplitCompareView(QtWidgets.QWidget):
         "✨\n\nĐÃ CÓ ẢNH HAZY\nNhấn ▶ Khử sương mù để hiển thị so sánh"
     )
 
-    # Tỉ lệ thanh chia: 0.0 -> chỉ hiển thị AFTER, 1.0 -> chỉ hiển thị BEFORE
     _HANDLE_RADIUS = 18
-    _HANDLE_HIT_PX = 24  # vùng bắt sự kiện kéo quanh đường chia
+    _HANDLE_HIT_PX = 24
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -51,10 +39,9 @@ class SplitCompareView(QtWidgets.QWidget):
         self.setCursor(QtCore.Qt.ArrowCursor)
         self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
         self.setStyleSheet(
-            f"background:#0f172a; border:1px solid {BORDER}; border-radius:10px;"
+            f"background:{CANVAS}; border:1px solid {BORDER}; border-radius:16px;"
         )
 
-    # ---------- public API ----------
     def set_before(self, img: np.ndarray) -> None:
         self._before_pixmap = self._np_to_pixmap(img)
         self.update()
@@ -75,7 +62,6 @@ class SplitCompareView(QtWidgets.QWidget):
             self._divider_ratio = ratio
             self.update()
 
-    # ---------- helpers ----------
     @staticmethod
     def _np_to_pixmap(img: np.ndarray) -> QtGui.QPixmap:
         img_u8 = np.ascontiguousarray(to_uint8(img))
@@ -86,7 +72,6 @@ class SplitCompareView(QtWidgets.QWidget):
         return QtGui.QPixmap.fromImage(qimg.copy())
 
     def _image_rect(self) -> QtCore.QRect:
-        """Trả về rect của vùng vẽ ảnh đã scale theo aspect ratio, căn giữa."""
         ref = self._before_pixmap or self._after_pixmap
         if ref is None:
             return self.rect()
@@ -99,21 +84,17 @@ class SplitCompareView(QtWidgets.QWidget):
     def _divider_x(self, target: QtCore.QRect) -> int:
         return target.left() + int(target.width() * self._divider_ratio)
 
-    # ---------- paint ----------
     def paintEvent(self, e):
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
         painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
 
-        # Nền widget (đã có qua stylesheet, nhưng vẫn fill để chắc)
-        painter.fillRect(self.rect(), QtGui.QColor("#0f172a"))
+        painter.fillRect(self.rect(), QtGui.QColor(CANVAS))
 
-        # Trường hợp chưa có cả 2 ảnh -> vẽ placeholder
         if self._before_pixmap is None:
             self._draw_placeholder(painter, self.PLACEHOLDER_EMPTY)
             return
         if self._after_pixmap is None:
-            # Chỉ có hazy -> hiển thị toàn ảnh hazy + thông báo
             target = self._image_rect()
             painter.drawPixmap(target, self._before_pixmap)
             self._draw_overlay_label(
@@ -127,10 +108,8 @@ class SplitCompareView(QtWidgets.QWidget):
         target = self._image_rect()
         divider_x = self._divider_x(target)
 
-        # 1) Vẽ AFTER toàn ảnh
         painter.drawPixmap(target, self._after_pixmap)
 
-        # 2) Vẽ BEFORE chỉ phần bên trái thanh chia
         if divider_x > target.left():
             clip_w = divider_x - target.left()
             clip_rect = QtCore.QRect(
@@ -141,12 +120,10 @@ class SplitCompareView(QtWidgets.QWidget):
             painter.drawPixmap(target, self._before_pixmap)
             painter.restore()
 
-        # 3) Vẽ thanh chia dọc
         line_pen = QtGui.QPen(QtGui.QColor(255, 255, 255, 230), 2)
         painter.setPen(line_pen)
         painter.drawLine(divider_x, target.top(), divider_x, target.bottom())
 
-        # 4) Bóng nhẹ 2 bên đường chia
         shadow = QtGui.QLinearGradient(
             divider_x - 6, 0, divider_x + 6, 0
         )
@@ -157,30 +134,24 @@ class SplitCompareView(QtWidgets.QWidget):
             QtCore.QRect(divider_x - 6, target.top(), 12, target.height()),
             QtGui.QBrush(shadow),
         )
-        # Vẽ lại đường chia trắng sắc nét trên cùng
         painter.setPen(line_pen)
         painter.drawLine(divider_x, target.top(), divider_x, target.bottom())
 
-        # 5) Handle hình tròn giữa ảnh
         center_y = target.center().y()
         r = self._HANDLE_RADIUS
         painter.setPen(QtGui.QPen(QtGui.QColor(PRIMARY), 2))
         painter.setBrush(QtGui.QColor("white"))
         painter.drawEllipse(QtCore.QPoint(divider_x, center_y), r, r)
 
-        # Mũi tên trái-phải trong handle
         arrow_pen = QtGui.QPen(QtGui.QColor(PRIMARY), 2)
         arrow_pen.setCapStyle(QtCore.Qt.RoundCap)
         painter.setPen(arrow_pen)
-        a = 5  # offset từ tâm
-        # Mũi tên trái <
+        a = 5
         painter.drawLine(divider_x - a, center_y, divider_x - a - 6, center_y - 5)
         painter.drawLine(divider_x - a, center_y, divider_x - a - 6, center_y + 5)
-        # Mũi tên phải >
         painter.drawLine(divider_x + a, center_y, divider_x + a + 6, center_y - 5)
         painter.drawLine(divider_x + a, center_y, divider_x + a + 6, center_y + 5)
 
-        # 6) Pill label BEFORE / AFTER (chỉ vẽ nếu bên đó còn đủ chỗ)
         if divider_x - target.left() > 90:
             self._draw_pill(
                 painter,
@@ -199,7 +170,7 @@ class SplitCompareView(QtWidgets.QWidget):
             )
 
     def _draw_placeholder(self, painter: QtGui.QPainter, text: str) -> None:
-        painter.setPen(QtGui.QColor("#cbd5e1"))
+        painter.setPen(QtGui.QColor(CANVAS_TEXT))
         font = painter.font()
         font.setPointSize(11)
         painter.setFont(font)
@@ -272,7 +243,6 @@ class SplitCompareView(QtWidgets.QWidget):
         )
         painter.restore()
 
-    # ---------- mouse interaction ----------
     def _on_handle(self, pos: QtCore.QPoint) -> bool:
         if self._before_pixmap is None or self._after_pixmap is None:
             return False
@@ -321,7 +291,6 @@ class SplitCompareView(QtWidgets.QWidget):
             self._update_cursor(e.pos())
 
     def mouseDoubleClickEvent(self, e):
-        """Double-click = reset thanh chia về giữa."""
         if e.button() == QtCore.Qt.LeftButton:
             self.set_divider_ratio(0.5)
 

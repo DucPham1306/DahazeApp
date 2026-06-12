@@ -214,7 +214,6 @@ class BenchmarkTab(QtWidgets.QWidget):
             ["Dataset", "Subset", "Thuật toán", "n"]
             + [h for _, h in self.METRIC_COLUMNS]
         )
-        # Làm bảng kết quả trung bình to và dễ đọc hơn
         summary_font = QtGui.QFont("Segoe UI", 11)
         self.tbl_summary.setFont(summary_font)
         header_font = QtGui.QFont("Segoe UI", 11, QtGui.QFont.Bold)

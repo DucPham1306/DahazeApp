@@ -22,6 +22,14 @@ from .style import (
     PRIMARY,
     SUCCESS,
     DANGER,
+    TEXT,
+    TEXT_MUTED,
+    HEADER_BAR_QSS,
+    HEADER_TITLE_QSS,
+    HEADER_SUBTITLE_QSS,
+    HEADER_BADGE_QSS,
+    HEADER_CHIP_QSS,
+    SECTION_LABEL_QSS,
 )
 
 
@@ -51,7 +59,6 @@ class ImageView(QtWidgets.QLabel):
         super().__init__(parent)
         self.setAlignment(QtCore.Qt.AlignCenter)
         self.setMinimumSize(420, 320)
-        # Cho phép widget co lại theo ảnh, tránh khoảng đen thừa
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
         )
@@ -67,14 +74,12 @@ class ImageView(QtWidgets.QLabel):
         h, w, _ = img_u8.shape
         qimg = QtGui.QImage(img_u8.data, w, h, 3 * w, QtGui.QImage.Format_RGB888)
         self._pixmap = QtGui.QPixmap.fromImage(qimg.copy())
-        # Khi có ảnh -> nền trong suốt để không lộ "ô vuông đen" phía dưới/2 bên
         self.setStyleSheet(self._image_qss)
         self.setText("")
         self._rescale()
 
     def clear_image(self, placeholder: str) -> None:
         self._pixmap = None
-        # Khi không có ảnh -> trả về nền tối kèm placeholder
         self.setStyleSheet(self._placeholder_qss)
         self.setText(placeholder)
 
@@ -187,7 +192,6 @@ class SingleImageTab(QtWidgets.QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
 
-        # ---- Thanh chuyển chế độ hiển thị ----
         mode_bar = QtWidgets.QWidget()
         mb_lay = QtWidgets.QHBoxLayout(mode_bar)
         mb_lay.setContentsMargins(0, 0, 0, 0)
@@ -210,10 +214,8 @@ class SingleImageTab(QtWidgets.QWidget):
         mb_lay.addWidget(self.btn_mode_split)
         root.addWidget(mode_bar)
 
-        # ---- Stack chứa 2 chế độ hiển thị ----
         self.view_stack = QtWidgets.QStackedWidget()
 
-        # Trang 0: side-by-side (cũ)
         page_side = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(page_side)
         grid.setContentsMargins(0, 0, 0, 0)
@@ -225,15 +227,12 @@ class SingleImageTab(QtWidgets.QWidget):
         grid.addWidget(self._labeled_view("AFTER", self.view_after), 0, 1)
         self.view_stack.addWidget(page_side)
 
-        # Trang 1: split-view slider
         page_split = QtWidgets.QWidget()
         vsplit = QtWidgets.QVBoxLayout(page_split)
         vsplit.setContentsMargins(0, 0, 0, 0)
         vsplit.setSpacing(6)
-        lab_split = QtWidgets.QLabel("SO SÁNH BẰNG THANH TRƯỢT  ·  Kéo handle để xem")
-        lab_split.setStyleSheet(
-            f"color:{PRIMARY}; font-weight:700; letter-spacing:1px; font-size:11px;"
-        )
+        lab_split = QtWidgets.QLabel("SO SÁNH BẰNG THANH TRƯỢT  ·  KÉO HANDLE ĐỂ XEM")
+        lab_split.setStyleSheet(SECTION_LABEL_QSS)
         vsplit.addWidget(lab_split)
         self.view_compare = SplitCompareView()
         vsplit.addWidget(self.view_compare, stretch=1)
@@ -248,7 +247,6 @@ class SingleImageTab(QtWidgets.QWidget):
         return wrapper
 
     def _set_view_mode(self, idx: int) -> None:
-        """0 = side-by-side, 1 = split slider"""
         self.view_stack.setCurrentIndex(idx)
         self.btn_mode_side.setChecked(idx == 0)
         self.btn_mode_split.setChecked(idx == 1)
@@ -259,9 +257,7 @@ class SingleImageTab(QtWidgets.QWidget):
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(6)
         lab = QtWidgets.QLabel(title)
-        lab.setStyleSheet(
-            f"color:{PRIMARY}; font-weight:700; letter-spacing:1px; font-size:11px;"
-        )
+        lab.setStyleSheet(SECTION_LABEL_QSS)
         v.addWidget(lab)
         v.addWidget(view)
         return w
@@ -416,10 +412,6 @@ class SingleImageTab(QtWidgets.QWidget):
         elif algo == "CLAHE":
             self._add_slider("clip_limit", "Clip limit", 1.0, 10.0, 2.0, 0.1)
             self._add_spin_int("tile_grid_size", "Tile grid", 2, 32, 8, 1)
-        elif algo == "CAP":
-            self._add_slider("beta", "Beta (scattering)", 0.1, 3.0, 1.0, 0.05)
-            self._add_spin_int("min_filter_size", "Min filter", 3, 31, 15, 2)
-            self._add_slider("t0", "t₀", 0.01, 0.3, 0.1, 0.01)
         elif algo == "DCP-Improved":
             self._add_spin_int("patch_size", "Patch size", 3, 31, 15, 2)
             self._add_slider("omega", "Omega", 0.5, 1.0, 0.95, 0.01)
@@ -438,7 +430,6 @@ class SingleImageTab(QtWidgets.QWidget):
             self.hazy_img = load_image(path, as_float=True)
             self.view_before.set_image(self.hazy_img)
             self.view_after.clear_image(self.PLACEHOLDER_AFTER)
-            # Đồng bộ vào split compare view
             self.view_compare.clear()
             self.view_compare.set_before(self.hazy_img)
             self.result_img = None
@@ -520,7 +511,7 @@ class MainWindow(QtWidgets.QMainWindow):
         v.addWidget(self._build_header())
 
         self.tabs = QtWidgets.QTabWidget()
-        self.tabs.setDocumentMode(True)
+        self.tabs.setDocumentMode(False)
         self.tab_single = SingleImageTab(self)
         self.tab_bench = BenchmarkTab(self)
         self.tabs.addTab(self.tab_single, "🖼  Xử lý ảnh đơn")
@@ -532,24 +523,43 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_header(self) -> QtWidgets.QWidget:
         bar = QtWidgets.QWidget()
-        bar.setFixedHeight(58)
-        bar.setStyleSheet(f"background:{PRIMARY}; color:white;")
+        bar.setObjectName("HeaderBar")
+        bar.setFixedHeight(72)
+        bar.setStyleSheet(f"#HeaderBar {{ {HEADER_BAR_QSS} }}")
         h = QtWidgets.QHBoxLayout(bar)
-        h.setContentsMargins(20, 8, 20, 8)
-        h.setSpacing(12)
+        h.setContentsMargins(24, 12, 24, 12)
+        h.setSpacing(14)
 
-        title = QtWidgets.QLabel("🌫️  Dehaze Studio")
-        title.setStyleSheet(
-            "color:white; font-size:18px; font-weight:700; letter-spacing:0.5px;"
-        )
-        h.addWidget(title)
+        badge = QtWidgets.QLabel("🌫")
+        badge.setFixedSize(44, 44)
+        badge.setAlignment(QtCore.Qt.AlignCenter)
+        badge.setStyleSheet(HEADER_BADGE_QSS)
+        h.addWidget(badge)
 
-        subtitle = QtWidgets.QLabel("DCP · DCP-Improved · CLAHE · CAP")
-        subtitle.setStyleSheet(
-            "color:rgba(255,255,255,0.85); font-size:12px; padding-left:6px;"
-        )
-        h.addWidget(subtitle)
+        text_col = QtWidgets.QWidget()
+        tv = QtWidgets.QVBoxLayout(text_col)
+        tv.setContentsMargins(0, 0, 0, 0)
+        tv.setSpacing(1)
+        title = QtWidgets.QLabel("Dehaze Studio")
+        title.setStyleSheet(HEADER_TITLE_QSS)
+        tv.addWidget(title)
+        subtitle = QtWidgets.QLabel("Khử sương mù ảnh số · so sánh & đánh giá")
+        subtitle.setStyleSheet(HEADER_SUBTITLE_QSS)
+        tv.addWidget(subtitle)
+        h.addWidget(text_col)
+
         h.addStretch()
+
+        for name in ("DCP", "DCP-Improved", "CLAHE"):
+            chip = QtWidgets.QLabel(name)
+            chip.setStyleSheet(HEADER_CHIP_QSS)
+            h.addWidget(chip)
+
+        shadow = QtWidgets.QGraphicsDropShadowEffect(bar)
+        shadow.setBlurRadius(24)
+        shadow.setColor(QtGui.QColor(15, 23, 42, 28))
+        shadow.setOffset(0, 3)
+        bar.setGraphicsEffect(shadow)
 
         return bar
 
