@@ -5,12 +5,10 @@ import numpy as np
 
 from ..utils.guided_filter import guided_filter
 
-
 def dark_channel(img: np.ndarray, patch_size: int = 15) -> np.ndarray:
     min_channel = img.min(axis=2)
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (patch_size, patch_size))
     return cv2.erode(min_channel, kernel)
-
 
 def estimate_atmospheric_light(
     img: np.ndarray, dark: np.ndarray, top_percent: float = 0.001

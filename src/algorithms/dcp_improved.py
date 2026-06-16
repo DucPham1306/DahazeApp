@@ -9,7 +9,7 @@ def _box(img, r):
     return cv2.boxFilter(img, ddepth=-1, ksize=(k, k),
                          borderType=cv2.BORDER_REFLECT)
 
-
+#Ánh sáng khí quyển A
 def _atmospheric_light(img, dark, top_percent=0.001):
     n = dark.size
     n_top = max(int(n * top_percent), 1)
@@ -18,8 +18,9 @@ def _atmospheric_light(img, dark, top_percent=0.001):
     cands = flat[idx]
     best_pixel = cands[cands.sum(axis=1).argmax()]
     return float(np.clip(best_pixel.mean(), 0.5, 0.95))
+#======
 
-
+#Tinh chỉnh transmission bằng Fast Guided Filter
 def _fast_gf_smallp(I_full_gray, I_small_gray, p_small, radius, eps, s):
     H, W = I_full_gray.shape[:2]
     rs = max(1, radius // s)
@@ -39,7 +40,7 @@ def _fast_gf_smallp(I_full_gray, I_small_gray, p_small, radius, eps, s):
     else:
         a_full, b_full = a, b
     return a_full * I_full_gray + b_full
-
+#=====
 
 def dehaze_dcp_improved(img, patch_size=15, omega=0.95, t0=0.1,
                          guided_radius=60, guided_eps=1e-3,
@@ -53,7 +54,7 @@ def dehaze_dcp_improved(img, patch_size=15, omega=0.95, t0=0.1,
         img = img.astype(np.float32)
 
     H, W = img.shape[:2]
-    s = max(1, int(subsample))
+    s = max(1, int(subsample)) #Cơ chế thu nhỏ 
     if min(H, W) // s < 64:
         s = max(1, min(H, W) // 64)
     Hs, Ws = max(1, H // s), max(1, W // s)
@@ -68,6 +69,7 @@ def dehaze_dcp_improved(img, patch_size=15, omega=0.95, t0=0.1,
 
     A = _atmospheric_light(img, dark)
 
+    #Phát hiện vùng trời với các đặc trưng về độ tối, độ bão hòa và độ sáng để điều chỉnh omega thích nghi theo vùng trời 
     img_small = cv2.resize(img, (Ws, Hs), interpolation=cv2.INTER_AREA) \
         if s > 1 else img
     min_s = img_small.min(axis=2)
@@ -88,12 +90,15 @@ def dehaze_dcp_improved(img, patch_size=15, omega=0.95, t0=0.1,
     np.clip(sky_s, 0.0, 1.0, out=sky_s)
     sky_full = cv2.resize(sky_s, (W, H), interpolation=cv2.INTER_LINEAR) \
         if s > 1 else sky_s
+    #==========================
 
+    #Transmission thô với omega thích nghi
     inv_A = 1.0 / A
     normed_min = np.clip(min_ch * inv_A, 0.0, 1.0)
     dc_norm = cv2.erode(normed_min, kernel)
     omega_map = omega - (0.20 * omega) * sky_full
     t_coarse = 1.0 - omega_map * dc_norm
+    #======
 
     coeff = np.array([0.299, 0.587, 0.114], dtype=np.float32)
     gray_full = (img @ coeff).astype(np.float32, copy=False)
@@ -107,13 +112,13 @@ def dehaze_dcp_improved(img, patch_size=15, omega=0.95, t0=0.1,
         t_coarse_small = t_coarse
 
     t_refined = _fast_gf_smallp(
-        gray_full, gray_small, t_coarse_small,
+        gray_full, gray_small, t_coarse_small, #Ngưỡng sàn t thích nghi theo vùng trời
         guided_radius, guided_eps, s,
     )
-    np.clip(t_refined, 0.0, 1.0, out=t_refined)
+    np.clip(t_refined, 0.0, 1.0, out=t_refined) #Phục hồi ảnh
 
     t_floor = t0 + (0.60 - t0) * sky_full
-    t_safe = np.maximum(t_refined, t_floor)[..., None]
+    t_safe = np.maximum(t_refined, t_floor)[..., None] #Hòa trộn vùng trời để tránh nhiễu
 
     J = (img - A) / t_safe + A
     np.clip(J, 0.0, 1.0, out=J)
@@ -121,8 +126,8 @@ def dehaze_dcp_improved(img, patch_size=15, omega=0.95, t0=0.1,
     blend = (0.55 * sky_full)[..., None]
     J = (1.0 - blend) * J + blend * img
     np.clip(J, 0.0, 1.0, out=J)
-
     if return_intermediate:
         return J, {"A": A, "t_coarse": t_coarse, "t_refined": t_refined,
                    "dark": dark, "sky_mask": sky_full}
     return J
+

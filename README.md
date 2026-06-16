@@ -5,9 +5,7 @@
 | Thuật toán | Tên đầy đủ | Mô tả ngắn |
 |---|---|---|
 | **DCP** | Dark Channel Prior | Ước lượng transmission map dựa trên kênh tối nhất |
-| **DCP Improved** | Dark Channel Prior (cải tiến) | Kết hợp guided filter để làm mịn transmission map |
-| **CLAHE** | Contrast Limited Adaptive Histogram Equalization | Tăng cường tương phản cục bộ |
-| **Hybrid** | CLAHE + DCP | Pipeline kết hợp: CLAHE tiền xử lý, DCP khử sương mù |
+| **DCP Improved** | Dark Channel Prior (cải tiến) | Kết hợp Fast Guided Filter, Sky Mask và các cơ chế thích nghi |
 
 ---
 
@@ -85,10 +83,7 @@ DehazeApp/
 └── src/
     ├── algorithms/
     │   ├── dcp.py                 # Dark Channel Prior
-    │   ├── dcp_improved.py        # DCP + guided filter cải tiến
-    │   ├── clahe.py               # CLAHE baseline
-    │   ├── cap.py                 # Color Attenuation Prior
-    │   └── hybrid.py              # Pipeline Hybrid (CLAHE → DCP)
+    │   └── dcp_improved.py        # DCP + Fast Guided Filter, Sky Mask, cải tiến
     ├── metrics/
     │   ├── psnr_ssim.py           # Full-reference: PSNR, SSIM
     │   ├── niqe.py                # No-reference: NIQE (cần pyiqa)
@@ -119,7 +114,7 @@ Các bước thao tác trong GUI:
 
 1. Nhấn **Mở ảnh hazy** (hoặc kéo–thả file ảnh vào cửa sổ).
 2. *(Tuỳ chọn)* Nhấn **Mở Ground Truth** — app sẽ tự động tính PSNR/SSIM so sánh.
-3. Chọn thuật toán: `DCP` / `DCP Improved` / `CLAHE` / `Hybrid`.
+3. Chọn thuật toán: `DCP` / `DCP-Improved`.
 4. Điều chỉnh tham số nếu cần, rồi nhấn **Khử sương mù**.
 5. Xem kết quả hiển thị song song với ảnh gốc.
 6. Nhấn **Lưu kết quả** để xuất ảnh ra file.
@@ -131,7 +126,7 @@ Các bước thao tác trong GUI:
 python -m src.benchmark \
     --sots-root data/SOTS \
     --out-dir   results \
-    --algorithms DCP DCP_Improved CLAHE Hybrid \
+    --algorithms DCP DCP-Improved \
     --save-images
 ```
 
@@ -170,7 +165,7 @@ Sau khi chạy xong, kết quả nằm trong `results/`:
 ## 6. Gợi ý cấu trúc báo cáo
 
 - **Chương 1 — Giới thiệu:** Bài toán khử sương mù, ứng dụng thực tế (giao thông, giám sát, ảnh vệ tinh), phạm vi đồ án.
-- **Chương 2 — Cơ sở lý thuyết:** Mô hình Atmospheric Scattering, nguyên lý của từng thuật toán (DCP, CLAHE, Hybrid), ưu và nhược điểm. Lấy code trong `src/algorithms/` làm minh hoạ.
+- **Chương 2 — Cơ sở lý thuyết:** Mô hình Atmospheric Scattering, nguyên lý của từng thuật toán (DCP, DCP-Improved), ưu và nhược điểm. Lấy code trong `src/algorithms/` làm minh hoạ.
 - **Chương 3 — Thiết kế hệ thống:** Kiến trúc module, Use Case diagram, thiết kế giao diện (chụp màn hình từ `main.py`).
 - **Chương 4 — Thực nghiệm:** Chạy `src/benchmark.py` trên SOTS, vẽ biểu đồ so sánh từ `metrics.csv` (dùng matplotlib/pandas). Phân tích kết quả theo indoor/outdoor, trade-off chất lượng ↔ tốc độ xử lý.
 
@@ -179,7 +174,6 @@ Sau khi chạy xong, kết quả nằm trong `results/`:
 ## 7. Hướng phát triển
 
 - DCP với patch size thích nghi theo từng vùng ảnh.
-- Tích hợp cân bằng trắng vào pipeline Hybrid.
 - Tăng tốc bằng vectorization, Numba, hoặc CUDA.
 - Bổ sung chỉ số FADE (Fog Aware Density Evaluator).
 - Thêm phương pháp học sâu (DehazeNet, AOD-Net) để so sánh.

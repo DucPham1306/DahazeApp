@@ -192,64 +192,17 @@ class SingleImageTab(QtWidgets.QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
 
-        mode_bar = QtWidgets.QWidget()
-        mb_lay = QtWidgets.QHBoxLayout(mode_bar)
-        mb_lay.setContentsMargins(0, 0, 0, 0)
-        mb_lay.setSpacing(8)
-        mb_lay.addStretch()
-
-        lbl_mode = QtWidgets.QLabel("Chế độ hiển thị:")
-        lbl_mode.setStyleSheet("color:#64748b; font-size:12px;")
-        mb_lay.addWidget(lbl_mode)
-
-        self.btn_mode_side = QtWidgets.QPushButton("⬛⬛  Side-by-side")
-        self.btn_mode_side.setCheckable(True)
-        self.btn_mode_side.setChecked(True)
-        self.btn_mode_side.clicked.connect(lambda: self._set_view_mode(0))
-        mb_lay.addWidget(self.btn_mode_side)
-
-        self.btn_mode_split = QtWidgets.QPushButton("◧  Split slider")
-        self.btn_mode_split.setCheckable(True)
-        self.btn_mode_split.clicked.connect(lambda: self._set_view_mode(1))
-        mb_lay.addWidget(self.btn_mode_split)
-        root.addWidget(mode_bar)
-
-        self.view_stack = QtWidgets.QStackedWidget()
-
-        page_side = QtWidgets.QWidget()
-        grid = QtWidgets.QGridLayout(page_side)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(12)
-        grid.setVerticalSpacing(8)
-        self.view_before = ImageView(self.PLACEHOLDER_BEFORE)
-        self.view_after = ImageView(self.PLACEHOLDER_AFTER)
-        grid.addWidget(self._labeled_view("BEFORE", self.view_before), 0, 0)
-        grid.addWidget(self._labeled_view("AFTER", self.view_after), 0, 1)
-        self.view_stack.addWidget(page_side)
-
-        page_split = QtWidgets.QWidget()
-        vsplit = QtWidgets.QVBoxLayout(page_split)
-        vsplit.setContentsMargins(0, 0, 0, 0)
-        vsplit.setSpacing(6)
-        lab_split = QtWidgets.QLabel("SO SÁNH BẰNG THANH TRƯỢT  ·  KÉO HANDLE ĐỂ XEM")
+        lab_split = QtWidgets.QLabel("SO SÁNH BẰNG THANH TRƯỢT  ·  KÉO ĐỂ XEM")
         lab_split.setStyleSheet(SECTION_LABEL_QSS)
-        vsplit.addWidget(lab_split)
+        root.addWidget(lab_split)
         self.view_compare = SplitCompareView()
-        vsplit.addWidget(self.view_compare, stretch=1)
+        root.addWidget(self.view_compare, stretch=1)
         hint = QtWidgets.QLabel(
             "💡  Double-click vào ảnh để đưa thanh chia về giữa."
         )
         hint.setStyleSheet("color:#64748b; font-size:11px;")
-        vsplit.addWidget(hint)
-        self.view_stack.addWidget(page_split)
-
-        root.addWidget(self.view_stack, stretch=1)
+        root.addWidget(hint)
         return wrapper
-
-    def _set_view_mode(self, idx: int) -> None:
-        self.view_stack.setCurrentIndex(idx)
-        self.btn_mode_side.setChecked(idx == 0)
-        self.btn_mode_split.setChecked(idx == 1)
 
     def _labeled_view(self, title: str, view: ImageView) -> QtWidgets.QWidget:
         w = QtWidgets.QWidget()
@@ -409,9 +362,6 @@ class SingleImageTab(QtWidgets.QWidget):
             self._add_slider("omega", "Omega", 0.5, 1.0, 0.95, 0.01)
             self._add_slider("t0", "t₀ (min trans.)", 0.01, 0.3, 0.1, 0.01)
             self._add_spin_int("guided_radius", "Guided radius", 10, 120, 60, 5)
-        elif algo == "CLAHE":
-            self._add_slider("clip_limit", "Clip limit", 1.0, 10.0, 2.0, 0.1)
-            self._add_spin_int("tile_grid_size", "Tile grid", 2, 32, 8, 1)
         elif algo == "DCP-Improved":
             self._add_spin_int("patch_size", "Patch size", 3, 31, 15, 2)
             self._add_slider("omega", "Omega", 0.5, 1.0, 0.95, 0.01)
@@ -428,8 +378,6 @@ class SingleImageTab(QtWidgets.QWidget):
     def _load_hazy(self, path: str) -> None:
         try:
             self.hazy_img = load_image(path, as_float=True)
-            self.view_before.set_image(self.hazy_img)
-            self.view_after.clear_image(self.PLACEHOLDER_AFTER)
             self.view_compare.clear()
             self.view_compare.set_before(self.hazy_img)
             self.result_img = None
@@ -472,7 +420,6 @@ class SingleImageTab(QtWidgets.QWidget):
 
     def _on_done(self, result: np.ndarray, dt_ms: float) -> None:
         self.result_img = result
-        self.view_after.set_image(result)
         self.view_compare.set_after(result)
         self.btn_run.setEnabled(True)
         self.btn_run.setText("▶  Khử sương mù")
@@ -550,7 +497,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         h.addStretch()
 
-        for name in ("DCP", "DCP-Improved", "CLAHE"):
+        for name in ("DCP", "DCP-Improved"):
             chip = QtWidgets.QLabel(name)
             chip.setStyleSheet(HEADER_CHIP_QSS)
             h.addWidget(chip)
