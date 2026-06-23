@@ -20,7 +20,6 @@ def estimate_atmospheric_light(
     candidates = flat_img[idx]
     return candidates[candidates.sum(axis=1).argmax()].astype(np.float32)
 
-
 def estimate_transmission(
     img: np.ndarray, A: np.ndarray, omega: float = 0.95, patch_size: int = 15
 ) -> np.ndarray:
@@ -33,7 +32,6 @@ def recover(
 ) -> np.ndarray:
     t_safe = np.maximum(t, t0)[..., None]
     return np.clip((img - A) / t_safe + A, 0.0, 1.0)
-
 
 def dehaze_dcp(
     img: np.ndarray,

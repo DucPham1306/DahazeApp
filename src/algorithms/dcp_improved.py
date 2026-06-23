@@ -18,7 +18,7 @@ def _atmospheric_light(img, dark, top_percent=0.001):
     cands = flat[idx]
     best_pixel = cands[cands.sum(axis=1).argmax()]
     return float(np.clip(best_pixel.mean(), 0.5, 0.95))
-#======
+#============================
 
 #Tinh chỉnh transmission bằng Fast Guided Filter
 def _fast_gf_smallp(I_full_gray, I_small_gray, p_small, radius, eps, s):
@@ -40,7 +40,7 @@ def _fast_gf_smallp(I_full_gray, I_small_gray, p_small, radius, eps, s):
     else:
         a_full, b_full = a, b
     return a_full * I_full_gray + b_full
-#=====
+#============================
 
 def dehaze_dcp_improved(img, patch_size=15, omega=0.95, t0=0.1,
                          guided_radius=60, guided_eps=1e-3,
@@ -130,4 +130,3 @@ def dehaze_dcp_improved(img, patch_size=15, omega=0.95, t0=0.1,
         return J, {"A": A, "t_coarse": t_coarse, "t_refined": t_refined,
                    "dark": dark, "sky_mask": sky_full}
     return J
-
